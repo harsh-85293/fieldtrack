@@ -118,7 +118,7 @@ app.use(errorHandler);
 async function start() {
   await connectDB();
 
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
   });
 
