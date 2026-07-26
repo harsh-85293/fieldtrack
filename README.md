@@ -10,6 +10,7 @@ FieldTrack is a full-stack web application that helps businesses track their fie
 
 - **Role-based access control** (Admin and Employee roles)
 - **JWT authentication** with secure HTTP-only cookies
+- **Google OAuth** for employee registration (admin approval required)
 - **Working sessions** with multiple sessions per day
 - **Real-time GPS tracking** with Haversine distance calculation
 - **Store visit recording** with product line items and price snapshots
@@ -17,42 +18,27 @@ FieldTrack is a full-stack web application that helps businesses track their fie
 - **Admin dashboard** with summary cards, charts, and live activity
 - **Comprehensive reports** with PDF, Excel, and CSV exports
 - **Audit logging** for all administrative actions
-- **PWA** support for mobile installation and offline access
 
 ## Architecture
 
 ```
 fieldtrack/
 ├── src/                    # React frontend (Vite)
-│   ├── src/
-│   │   ├── api/            # Axios client and API services
-│   │   ├── components/     # Reusable UI components
-│   │   │   ├── ui/         # Generic UI components
-│   │   │   ├── admin/      # Admin-specific components
-│   │   │   ├── employee/   # Employee-specific components
-│   │   │   └── layout/     # Layout components
-│   │   ├── contexts/       # React contexts (Auth)
-│   │   ├── hooks/          # Custom hooks
-│   │   ├── lib/            # Offline DB, utilities
-│   │   ├── pages/          # Page components
-│   │   │   ├── admin/      # Admin pages
-│   │   │   ├── employee/   # Employee pages
-│   │   │   └── auth/       # Auth pages
-│   │   └── utils/           # Format helpers
-│   ├── public/             # Static assets, PWA icons
-│   └── vite.config.ts      # Vite + PWA config
+│   ├── api/                # Axios client and API services
+│   ├── components/         # Reusable UI components
+│   ├── contexts/           # React contexts (Auth)
+│   ├── lib/                # Offline DB, utilities
+│   ├── pages/              # Page components
+│   └── utils/              # Format helpers
 │
 ├── server/                 # Node.js/Express backend
 │   ├── config/             # Database and constants
 │   ├── controllers/        # Route controllers
-│   ├── middleware/          # Auth, error, audit middleware
+│   ├── middleware/         # Auth, error, audit middleware
 │   ├── models/             # Mongoose models
 │   ├── routes/             # Express routes
-│   ├── services/           # Business logic services
-│   ├── utils/              # Geo, logger, helpers
-│   ├── validators/         # Input validators
-│   ├── tests/              # Jest tests
 │   ├── seeds/              # Database seed script
+│   ├── .env.example        # Backend env template (no secrets)
 │   └── index.js            # Entry point
 │
 └── README.md
@@ -64,7 +50,6 @@ fieldtrack/
 - **Backend**: Node.js, Express.js, Mongoose, JWT, bcrypt, Helmet, CORS, express-rate-limit
 - **Database**: MongoDB Atlas
 - **Exports**: ExcelJS (Excel), PDFKit (PDF), CSV (native)
-- **PWA**: vite-plugin-pwa with Workbox
 
 ## Quick Start (Local Development)
 
@@ -88,83 +73,60 @@ cd ..
 
 ### 2. Environment Variables
 
-All environment variables live in a single `.env` file at the **project root**. The backend reads it via Node's `--env-file` flag (no dotenv package needed).
+**Never commit a real `.env` file.** It is gitignored.
 
-Copy `.env` and fill in your values:
+1. Copy the template:
+   ```bash
+   cp server/.env.example .env
+   ```
+2. Fill in your own values locally (MongoDB URI, JWT secret, Google Client ID, etc.).
+3. Frontend Vite variables use the `VITE_` prefix (see comments in `server/.env.example`).
 
-```env
-# Database
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/fieldtrack?retryWrites=true&w=majority
+Required categories (names only — see `server/.env.example` for the full list):
 
-# Backend
-NODE_ENV=development
-PORT=5000
-JWT_SECRET=your_very_long_secure_random_jwt_secret_here
-JWT_EXPIRES_IN=7d
-CLIENT_URL=http://localhost:5173
-BUSINESS_TIMEZONE=Asia/Kolkata
-DEFAULT_CURRENCY=INR
-STORE_VISIT_RADIUS_METERS=250
-LOCATION_MAX_ACCURACY_METERS=100
-LOCATION_MAX_SPEED_KMH=160
-BCRYPT_ROUNDS=12
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX=100
-
-# Frontend
-VITE_API_URL=/api/v1
-VITE_APP_NAME=FieldTrack
-VITE_GOOGLE_CLIENT_ID=
-```
+| Area | Examples (keys only) |
+|------|----------------------|
+| Database | `MONGODB_URI` |
+| Auth | `JWT_SECRET`, `JWT_EXPIRES_IN`, `GOOGLE_CLIENT_ID` |
+| App | `CLIENT_URL`, `PORT`, `NODE_ENV` |
+| Frontend | `VITE_API_URL`, `VITE_APP_NAME`, `VITE_GOOGLE_CLIENT_ID` |
 
 ### 3. MongoDB Atlas Setup
 
-1. Create a MongoDB Atlas account at https://www.mongodb.com/atlas
-2. Create a new cluster (free tier is sufficient)
-3. Create a database user
-4. Add your IP to the IP access list
-5. Get your connection string from "Connect > Connect your application"
-6. Paste it into `MONGODB_URI` in your `.env`
+1. Create a cluster in [MongoDB Atlas](https://www.mongodb.com/atlas)
+2. Create a database user and allow network access for your IP / host
+3. Copy the connection string into your local `.env` as `MONGODB_URI`
 
 ### 4. Run the Application
 
 Open **two terminals**:
 
 ```bash
-# Terminal 1 - Start the backend server
+# Terminal 1 - Backend
 cd server
 npm run dev
 
-# Terminal 2 - Start the frontend dev server (from project root)
+# Terminal 2 - Frontend (project root)
 npm run dev
 ```
 
-The frontend runs on http://localhost:5173 and the backend on http://localhost:5000. The Vite dev server proxies `/api` requests to the backend automatically.
+Frontend: http://localhost:5173  
+Backend: http://localhost:5000  
 
-### 5. Seed the Database
+Vite proxies `/api` to the backend in development.
+
+### 5. Seed the Database (local only)
 
 ```bash
 cd server
 npm run seed
 ```
 
-This creates:
-- 1 administrator
-- 3 employees
-- 5 stores
-- 10 products
-- Sample sessions with GPS routes and store visits for the last 3 days
+This creates sample admin/employee users, stores, products, and visits for development.
 
-### Demo Credentials (Development Only)
+Demo login details are printed **only in your terminal** after seeding. Do not publish those credentials in docs, chats, or the repository.
 
-| Role     | Email                   | Password         |
-|----------|-------------------------|------------------|
-| Admin    | admin@fieldtrack.com    | Admin@12345      |
-| Employee | rahul@fieldtrack.com    | Employee@123     |
-| Employee | priya@fieldtrack.com    | Employee@123     |
-| Employee | amit@fieldtrack.com      | Employee@123     |
-
-**IMPORTANT**: Change all seeded passwords before any non-development use!
+Change all seeded passwords before any shared or production use.
 
 ### 6. Run Tests
 
@@ -173,136 +135,76 @@ cd server
 npm test
 ```
 
-Tests cover:
-- Haversine distance calculation
-- GPS point validation (accuracy, speed, duplicates)
-- Route distance calculation
-- Money conversion (minor units)
-- Session business rules
-- Visit totals calculation
-- API route protection
-- Duplicate submission prevention
-- Invalid GPS rejection
-
 ## How GPS Tracking Works
 
-1. **Check-in**: Employee grants GPS permission and checks in. A new `WorkSession` is created with check-in coordinates.
-2. **Tracking**: The browser Geolocation API (`watchPosition`) records GPS points approximately every 30 seconds or after 50 metres of movement.
-3. **Batching**: Points are sent to the backend in small batches (max 200 per request).
-4. **Offline**: If the network fails, points are queued in IndexedDB and synced when connectivity returns.
-5. **Validation**: The backend validates each point using:
-   - **Accuracy filter**: Points with accuracy > 100m are rejected
-   - **Speed filter**: Points implying speed > 160 km/h are rejected
-   - **Duplicate filter**: Identical consecutive points are rejected
-6. **Distance**: Total distance is calculated server-side using the Haversine formula on valid points only.
-7. **Check-out**: Tracking stops, total duration and distance are finalized.
-
-Rejected points are retained for audit purposes but marked with a `rejected` status and reject reason.
-
-## PWA Installation
-
-FieldTrack is a Progressive Web App (PWA) that can be installed on mobile devices:
-
-### Android (Chrome)
-1. Open the app URL in Chrome
-2. Tap the menu (three dots)
-3. Select "Install app" or "Add to Home screen"
-
-### iOS (Safari)
-1. Open the app URL in Safari
-2. Tap the Share button
-3. Select "Add to Home Screen"
-
-### Desktop (Chrome/Edge)
-1. Open the app URL
-2. Click the install icon in the address bar
-
-The PWA caches the application shell for offline access and OpenStreetMap tiles for map viewing offline.
+1. **Check-in**: Employee grants GPS permission and checks in. A new `WorkSession` is created.
+2. **Tracking**: The browser Geolocation API records points during an active session.
+3. **Batching**: Points are uploaded in batches; failures queue to IndexedDB for later sync.
+4. **Validation**: Backend rejects poor accuracy, impossible speed, and duplicate points.
+5. **Distance**: Server calculates route distance with Haversine (including check-in/out anchors).
+6. **Check-out**: Session duration and distance are finalized.
 
 ## Security Considerations
 
-- **JWT in HTTP-only cookies**: Tokens are not accessible via JavaScript
-- **bcrypt password hashing**: Passwords are never stored in plaintext
-- **Helmet security headers**: CSP, XSS protection, frame options
-- **CORS**: Configured via environment variable
-- **Rate limiting**: Prevents brute-force attacks
-- **Input sanitization**: express-mongo-sanitize prevents NoSQL injection
-- **Input validation**: express-validator on all endpoints
-- **Role-based access control**: API and route protection by role
-- **Employee deactivation**: Immediately prevents future access
-- **GPS data isolation**: Employees cannot see other employees' GPS data
-- **No secrets in frontend**: All credentials and secrets are server-side only
+- JWT in HTTP-only cookies
+- bcrypt password hashing
+- Helmet security headers
+- CORS configured via environment
+- Rate limiting
+- Input sanitization and validation
+- Role-based API access
+- Never commit `.env`, secrets, API keys, or real database URIs
+- Use `server/.env.example` as the only shared env template
 
 ## Deployment
 
-### Frontend (Vercel/Netlify)
+### Frontend (Vercel)
 
-1. Build the client:
-   ```bash
-   cd client
-   npm run build
-   ```
-2. Deploy the `dist` folder to Vercel or Netlify
-3. Set environment variable `VITE_API_URL` to your backend URL
+1. Import the GitHub repo
+2. Build: `npm run build` · Output: `dist`
+3. Set frontend env vars (e.g. `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`) in the host dashboard — not in git
 
-### Backend (Render/Railway)
+### Backend (Render)
 
-1. Deploy the `server` directory
-2. Set all environment variables (see `.env.example`)
-3. Set `NODE_ENV=production`
-4. Set `CLIENT_URL` to your frontend URL
-5. Run `npm run seed` if needed (first deployment only)
+1. Root directory: `server`
+2. Build: `npm install` · Start: `npm start`
+3. Set backend env vars from `server/.env.example` in the host dashboard
+4. Set `CLIENT_URL` to your production frontend origin
+5. Seed only if you intentionally need sample data (prefer creating real admin accounts)
 
-### MongoDB Atlas
+### Checklist
 
-1. Create a production database in MongoDB Atlas
-2. Set the `MONGODB_URI` environment variable
-3. Configure IP access list for your backend host
-
-### HTTPS
-
-Both Vercel/Netlify and Render/Railway provide HTTPS by default. Ensure:
-- `JWT_SECRET` is a long, random string
-- `CLIENT_URL` uses HTTPS
-- Cookie `secure` flag is enabled (automatic in production)
-
-## Data Accuracy Rules
-
-- All timestamps are stored in UTC
-- Display dates use the configured business timezone (default: Asia/Kolkata)
-- Money is stored as integer minor units (paise) to avoid floating-point errors
-- Quantities and collection values are validated as non-negative
-- Distance, duration, and totals are calculated on the backend
-- Historical records are never permanently deleted (soft delete only)
-- Product prices are snapshotted in visit items for historical accuracy
+- [ ] No secrets in the repository
+- [ ] Strong unique `JWT_SECRET` in production
+- [ ] `CLIENT_URL` / CORS match the live frontend URL
+- [ ] MongoDB network access allows the backend host
+- [ ] Google OAuth origins match the live frontend domain(s)
 
 ## API Structure
 
 All APIs are under `/api/v1`:
 
-| Route           | Description                          |
-|-----------------|--------------------------------------|
-| `/auth`         | Login, logout, get me, change password |
-| `/employees`    | Employee CRUD, attendance, visits    |
-| `/sessions`     | Check-in/out, session list, routes   |
-| `/locations`    | GPS point submission                 |
-| `/stores`       | Store CRUD                           |
-| `/products`     | Product CRUD                         |
-| `/visits`       | Store visit creation and listing    |
-| `/reports`      | Employee/store/product/date reports |
-| `/dashboard`    | Summary, live activity, charts      |
-| `/audit-logs`   | Audit log listing                    |
-| `/settings`     | App settings                         |
+| Route | Description |
+|-------|-------------|
+| `/auth` | Login, logout, Google OAuth, profile |
+| `/employees` | Employee CRUD and approvals |
+| `/sessions` | Check-in/out, session list, routes |
+| `/locations` | GPS point submission |
+| `/stores` | Store CRUD |
+| `/products` | Product CRUD |
+| `/visits` | Store visit creation and listing |
+| `/reports` | Employee/store/product/date reports |
+| `/dashboard` | Summary, live activity, charts |
+| `/audit` | Audit log listing |
+| `/settings` | App settings |
 
 ### Response Format
 
-All API responses follow this structure:
 ```json
 {
   "success": true,
   "message": "Human-readable message",
-  "data": {},
-  "meta": {}
+  "data": {}
 }
 ```
 
