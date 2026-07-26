@@ -182,7 +182,7 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [pendingUser, setPendingUser] = useState(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const { login } = useAuth();
+  const { login, loadUser, setUser } = useAuth();
   const { toastError, toastSuccess } = useToast();
   const navigate = useNavigate();
   const errorAlertId = useId();
@@ -191,6 +191,12 @@ export default function Login() {
     setMounted(true);
   }, []);
 
+  const redirectForUser = (userData) => {
+    if (userData?.role === 'admin') navigate('/admin', { replace: true });
+    else if (userData?.role === 'employee') navigate('/app', { replace: true });
+    else navigate('/unauthorized', { replace: true });
+  };
+
   const handleGoogleSuccess = async (credential) => {
     setApiError('');
     setGoogleLoading(true);
@@ -198,16 +204,22 @@ export default function Login() {
       const res = await authService.googleAuth(credential);
       const data = res.data.data;
       if (res.data.status === 'active') {
+        setUser(data);
+        try {
+          await loadUser();
+        } catch {
+          /* cookie may still be enough; keep user from response */
+        }
         toastSuccess('Signed in with Google');
-        if (data.role === 'admin') navigate('/admin');
-        else if (data.role === 'employee') navigate('/app');
-        else navigate('/unauthorized');
+        redirectForUser(data);
         return;
       }
       if (res.data.status === 'pending') {
         setPendingUser(data);
         return;
       }
+      setApiError(res.data.message || 'Google sign-in did not complete.');
+      toastError(res.data.message || 'Google sign-in did not complete.');
     } catch (err) {
       const msg = err.response?.data?.message || 'Google authentication failed.';
       setApiError(msg);

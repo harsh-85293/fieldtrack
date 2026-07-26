@@ -30,7 +30,7 @@ export default function GoogleButton({ label = 'Continue with Google', onSuccess
           <span className="ml-2 text-sm font-medium text-slate-500">Connecting…</span>
         </div>
       )}
-      <div className="flex w-full justify-center [&>div]:w-full [&_iframe]:!w-full">
+      <div className="flex w-full justify-center">
         <GoogleLogin
           onSuccess={async (credentialResponse) => {
             setLoading(true);
@@ -52,11 +52,11 @@ export default function GoogleButton({ label = 'Continue with Google', onSuccess
           text="continue_with"
           shape="rectangular"
           size="large"
-          width="100%"
+          width="360"
           locale="en"
+          useOneTap={false}
         />
       </div>
-      {/* Accessible label for screen readers; visual label is Google's button */}
       <span className="sr-only">{label}</span>
     </div>
   );

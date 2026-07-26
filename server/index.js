@@ -57,6 +57,8 @@ function isAllowedOrigin(origin) {
 // ---- Security & middleware ----
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Required so Google Identity Services can communicate with the opener window
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
 app.use(
