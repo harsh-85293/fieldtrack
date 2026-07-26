@@ -22,10 +22,12 @@ function signToken(userId, remember = false) {
 }
 
 function setTokenCookie(res, token, remember = false) {
+  const isProd = process.env.NODE_ENV === 'production';
   const options = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: isProd, // required with SameSite=None
+    sameSite: isProd ? 'none' : 'lax',
+    path: '/',
   };
   if (remember) {
     options.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days

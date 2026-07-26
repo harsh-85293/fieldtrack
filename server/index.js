@@ -29,12 +29,42 @@ import settingsRoutes from './routes/settingsRoutes.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+function getAllowedOrigins() {
+  const fromEnv = (process.env.CLIENT_URL || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return new Set([
+    ...fromEnv,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ]);
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (getAllowedOrigins().has(origin)) return true;
+  // Vercel production + preview deployments
+  try {
+    const host = new URL(origin).hostname;
+    if (host.endsWith('.vercel.app')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 // ---- Security & middleware ----
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   }),
 );
