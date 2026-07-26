@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { ArrowLeft, Plus, Trash2, MapPin, Save } from 'lucide-react';
-import { storeService, productService, visitService } from '../../api/services.js';
+import { storeService, productService, visitService, sessionService } from '../../api/services.js';
 import {
-  Button, Input, Select, LoadingSpinner, ErrorState, Badge,
+  Button, Select, LoadingSpinner, ErrorState, Badge,
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
-import { fromMinor, toMinor, formatMoney } from '../../utils/format.js';
+import { formatRupees, entityId } from '../../utils/format.js';
+import { extractList } from '../../utils/apiData.js';
 import { queuePendingVisit } from '../../lib/offlineDb.js';
 
 export default function RecordVisit() {
@@ -15,6 +16,7 @@ export default function RecordVisit() {
   const { toastSuccess, toastError, toastInfo } = useToast();
   const [stores, setStores] = useState([]);
   const [products, setProducts] = useState([]);
+  const [activeSession, setActiveSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gpsStatus, setGpsStatus] = useState('idle');
@@ -26,7 +28,6 @@ export default function RecordVisit() {
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm({
     defaultValues: { storeId: '', notes: '' },
@@ -34,14 +35,14 @@ export default function RecordVisit() {
 
   const loadOptions = useCallback(async () => {
     try {
-      const [storeRes, prodRes] = await Promise.all([
-        storeService.getAll({ limit: 1000 }),
-        productService.getAll({ limit: 1000 }),
+      const [storeRes, prodRes, sessionRes] = await Promise.all([
+        storeService.getActive(),
+        productService.getActive(),
+        sessionService.getActiveSession(),
       ]);
-      const storeData = storeRes.data.data || storeRes.data;
-      setStores(storeData.stores || storeData.items || storeData || []);
-      const prodData = prodRes.data.data || prodRes.data;
-      setProducts(prodData.products || prodData.items || prodData || []);
+      setStores(extractList(storeRes, 'stores'));
+      setProducts(extractList(prodRes, 'products'));
+      setActiveSession(sessionRes.data?.data ?? sessionRes.data ?? null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load data');
     } finally {
@@ -53,7 +54,6 @@ export default function RecordVisit() {
     loadOptions();
   }, [loadOptions]);
 
-  // Get GPS on mount
   useEffect(() => {
     if (!navigator.geolocation) {
       setGpsStatus('unavailable');
@@ -72,14 +72,21 @@ export default function RecordVisit() {
       (err) => {
         setGpsStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'error');
       },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 15000 },
     );
   }, []);
 
   const addLineItem = () => {
     setLineItems((items) => [
       ...items,
-      { id: crypto.randomUUID(), productId: '', quantity: 1, unitPrice: 0, productName: '' },
+      {
+        id: crypto.randomUUID(),
+        productId: '',
+        quantity: 1,
+        unitPrice: 0,
+        collectedAmount: 0,
+        productName: '',
+      },
     ]);
   };
 
@@ -90,72 +97,91 @@ export default function RecordVisit() {
   const updateLineItem = (id, field, value) => {
     setLineItems((items) =>
       items.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value };
-          if (field === 'productId') {
-            const product = products.find((p) => p.id === value);
-            if (product) {
-              updated.productName = product.name;
-              updated.unitPrice = product.price || 0;
-            }
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        if (field === 'productId') {
+          const product = products.find((p) => String(entityId(p)) === String(value));
+          if (product) {
+            updated.productName = product.name;
+            const price = Number(product.defaultPrice ?? product.price ?? 0);
+            updated.unitPrice = price;
+            const qty = parseFloat(updated.quantity) || 0;
+            updated.collectedAmount = Number((price * qty).toFixed(2));
           }
-          return updated;
         }
-        return item;
-      })
+        if (field === 'quantity' || field === 'unitPrice') {
+          const qty = parseFloat(field === 'quantity' ? value : updated.quantity) || 0;
+          const price = parseFloat(field === 'unitPrice' ? value : updated.unitPrice) || 0;
+          // Keep collected in sync unless user already edited it independently later
+          updated.collectedAmount = Number((price * qty).toFixed(2));
+        }
+        return updated;
+      }),
     );
   };
 
-  const totalAmount = lineItems.reduce((sum, item) => {
+  const totalQuantity = lineItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
+  const totalValue = lineItems.reduce((sum, item) => {
     const qty = parseFloat(item.quantity) || 0;
     const price = parseFloat(item.unitPrice) || 0;
-    return sum + toMinor(qty * fromMinor(price));
+    return sum + qty * price;
   }, 0);
+  const totalCollected = lineItems.reduce(
+    (sum, item) => sum + (parseFloat(item.collectedAmount) || 0),
+    0,
+  );
 
   const onSubmit = async (data) => {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
 
-    if (lineItems.length === 0) {
-      toastError('Please add at least one product');
-      submittingRef.current = false;
-      setSubmitting(false);
-      return;
-    }
-
-    const idempotencyKey = crypto.randomUUID();
-
-    const payload = {
-      idempotencyKey,
-      storeId: data.storeId,
-      notes: data.notes,
-      items: lineItems.map((item) => ({
-        productId: item.productId,
-        quantity: parseFloat(item.quantity) || 0,
-        unitPrice: parseFloat(item.unitPrice) || 0,
-      })),
-      latitude: gpsPosition?.latitude || null,
-      longitude: gpsPosition?.longitude || null,
-      accuracy: gpsPosition?.accuracy || null,
-    };
-
     try {
-      await visitService.create(payload);
-      toastSuccess('Visit recorded successfully');
-      navigate('/app/visits');
-    } catch (err) {
-      // Offline fallback - queue for later sync
-      if (!navigator.onLine || err.code === 'ERR_NETWORK') {
-        try {
+      if (!activeSession) {
+        toastError('Check in first to record a store visit');
+        return;
+      }
+      if (lineItems.length === 0) {
+        toastError('Please add at least one product');
+        return;
+      }
+      if (lineItems.some((item) => !item.productId)) {
+        toastError('Select a product for every line item');
+        return;
+      }
+
+      const sessionId = entityId(activeSession);
+      const idempotencyKey = crypto.randomUUID();
+
+      const payload = {
+        idempotencyKey,
+        sessionId,
+        storeId: data.storeId,
+        notes: data.notes,
+        items: lineItems.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: parseFloat(item.quantity) || 0,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          collectedAmount: parseFloat(item.collectedAmount) || 0,
+        })),
+        latitude: gpsPosition?.latitude ?? null,
+        longitude: gpsPosition?.longitude ?? null,
+        accuracy: gpsPosition?.accuracy ?? null,
+      };
+
+      try {
+        await visitService.create(payload);
+        toastSuccess('Visit recorded successfully');
+        navigate('/app/visits');
+      } catch (err) {
+        if (!navigator.onLine || err.code === 'ERR_NETWORK') {
           await queuePendingVisit({ ...payload, createdAt: new Date().toISOString() });
           toastInfo('Visit saved offline. Will sync when online.');
           navigate('/app/visits');
-        } catch (queueErr) {
-          toastError('Failed to save visit offline');
+        } else {
+          toastError(err.response?.data?.message || 'Failed to record visit');
         }
-      } else {
-        toastError(err.response?.data?.message || 'Failed to record visit');
       }
     } finally {
       submittingRef.current = false;
@@ -179,17 +205,22 @@ export default function RecordVisit() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/app')} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
+        <button type="button" onClick={() => navigate('/app')} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold text-gray-900">Record Visit</h1>
       </div>
 
+      {!activeSession && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          You must check in before recording a store visit.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {/* GPS status */}
         <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex items-center gap-2">
-            <MapPin className={`w-5 h-5 text-${gps.color === 'green' ? 'emerald' : gps.color === 'amber' ? 'amber' : gps.color === 'red' ? 'red' : 'gray'}-500 ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`} />
+            <MapPin className="w-5 h-5 text-gray-500" />
             <div>
               <p className="text-sm font-medium text-gray-700">{gps.label}</p>
               {gpsPosition && (
@@ -202,7 +233,6 @@ export default function RecordVisit() {
           {gpsPosition && <Badge color="green">±{Math.round(gpsPosition.accuracy)}m</Badge>}
         </div>
 
-        {/* Store selection */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <Select
             label="Store"
@@ -211,12 +241,11 @@ export default function RecordVisit() {
           >
             <option value="">Select a store...</option>
             {stores.map((store) => (
-              <option key={store.id} value={store.id}>{store.name}</option>
+              <option key={entityId(store)} value={entityId(store)}>{store.name}</option>
             ))}
           </Select>
         </div>
 
-        {/* Line items */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Products</h3>
@@ -227,13 +256,13 @@ export default function RecordVisit() {
           </div>
 
           {lineItems.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No items added yet. Tap "Add Item" to begin.</p>
+            <p className="text-sm text-gray-500 text-center py-4">No items added yet. Tap &quot;Add Item&quot; to begin.</p>
           ) : (
             <div className="space-y-3">
-              {lineItems.map((item) => (
+              {lineItems.map((item, index) => (
                 <div key={item.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-500">Item {lineItems.indexOf(item) + 1}</span>
+                    <span className="text-xs font-medium text-gray-500">Item {index + 1}</span>
                     <button
                       type="button"
                       onClick={() => removeLineItem(item.id)}
@@ -249,15 +278,15 @@ export default function RecordVisit() {
                   >
                     <option value="">Select product...</option>
                     {products.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
+                      <option key={entityId(p)} value={entityId(p)}>{p.name}</option>
                     ))}
                   </select>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="text-xs text-gray-500">Quantity</label>
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         step="1"
                         value={item.quantity}
                         onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)}
@@ -270,14 +299,25 @@ export default function RecordVisit() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={fromMinor(item.unitPrice).toFixed(2)}
-                        onChange={(e) => updateLineItem(item.id, 'unitPrice', toMinor(parseFloat(e.target.value) || 0))}
+                        value={item.unitPrice}
+                        onChange={(e) => updateLineItem(item.id, 'unitPrice', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Collected (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.collectedAmount}
+                        onChange={(e) => updateLineItem(item.id, 'collectedAmount', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
                   <div className="text-right text-sm font-medium text-gray-700">
-                    Subtotal: {formatMoney(toMinor((parseFloat(item.quantity) || 0) * fromMinor(item.unitPrice)))}
+                    Line total: {formatRupees((parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0))}
                   </div>
                 </div>
               ))}
@@ -285,14 +325,23 @@ export default function RecordVisit() {
           )}
 
           {lineItems.length > 0 && (
-            <div className="border-t border-gray-100 pt-3 flex justify-between items-center">
-              <span className="text-sm font-semibold text-gray-900">Total</span>
-              <span className="text-lg font-bold text-primary-700">{formatMoney(totalAmount)}</span>
+            <div className="border-t border-gray-100 pt-3 space-y-1">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Total quantity</span>
+                <span>{totalQuantity}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Product value</span>
+                <span>{formatRupees(totalValue)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-gray-900">Collected</span>
+                <span className="text-lg font-bold text-primary-700">{formatRupees(totalCollected)}</span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Notes */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
           <textarea
@@ -303,8 +352,7 @@ export default function RecordVisit() {
           />
         </div>
 
-        {/* Submit */}
-        <Button type="submit" className="w-full" size="lg" loading={submitting}>
+        <Button type="submit" className="w-full" size="lg" loading={submitting} disabled={!activeSession}>
           <Save className="w-5 h-5" />
           Submit Visit
         </Button>

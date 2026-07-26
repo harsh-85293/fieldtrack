@@ -5,7 +5,8 @@ import { visitService } from '../../api/services.js';
 import {
   LoadingCard, EmptyState, ErrorState, Badge, Pagination,
 } from '../../components/ui/index.jsx';
-import { formatDateTime, formatMoney } from '../../utils/format.js';
+import { formatDateTime, formatRupees, entityId } from '../../utils/format.js';
+import { extractList, extractPagination } from '../../utils/apiData.js';
 
 export default function EmployeeVisits() {
   const [visits, setVisits] = useState([]);
@@ -21,9 +22,8 @@ export default function EmployeeVisits() {
     try {
       const params = { page, date: dateFilter };
       const res = await visitService.getMyVisits(params);
-      const data = res.data.data || res.data;
-      setVisits(data.visits || data.items || data || []);
-      setTotalPages(data.totalPages || data.pages || 1);
+      setVisits(extractList(res, 'visits'));
+      setTotalPages(extractPagination(res).pages);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load visits');
     } finally {
@@ -71,27 +71,32 @@ export default function EmployeeVisits() {
       ) : (
         <>
           <div className="space-y-3">
-            {visits.map((v) => (
+            {visits.map((v) => {
+              const id = entityId(v);
+              if (!id) return null;
+              const outside = v.isOutsideRadius ?? v.outsideRadius;
+              return (
               <Link
-                key={v.id}
-                to={`/app/visits/${v.id}`}
+                key={id}
+                to={`/app/visits/${id}`}
                 className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300 transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="font-medium text-gray-900">{v.storeName || '—'}</p>
-                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(v.visitTime)}</p>
+                    <p className="font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(v.visitDate || v.visitTime)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-primary-700">{formatMoney(v.totalAmount || 0)}</p>
-                    <p className="text-xs text-gray-500">{v.itemCount || 0} items</p>
+                    <p className="font-semibold text-primary-700">{formatRupees(v.totalValue ?? v.totalAmount ?? 0)}</p>
+                    <p className="text-xs text-gray-500">{v.totalQuantity || v.items?.length || v.itemCount || 0} items</p>
                   </div>
                 </div>
-                {v.outsideRadius && (
+                {outside && (
                   <Badge color="red" className="mt-2">Outside Radius</Badge>
                 )}
               </Link>
-            ))}
+              );
+            })}
           </div>
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </>

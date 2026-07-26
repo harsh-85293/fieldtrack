@@ -26,6 +26,8 @@ import { authService } from '../../api/services.js';
 import GoogleButton from '../../components/auth/GoogleButton.jsx';
 import PendingApproval from './PendingApproval.jsx';
 
+const REMEMBER_IDENTIFIER_KEY = 'fieldtrack_remember_identifier';
+
 function BrandPanel() {
   const features = [
     { icon: Clock, label: 'Real-time attendance', desc: 'Check-in and check-out with live timestamps' },
@@ -224,18 +226,42 @@ export default function Login() {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: { identifier: '', password: '', remember: false },
   });
 
+  // Prefill email/employee ID when "Remember me" was used previously
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBER_IDENTIFIER_KEY);
+      if (saved) {
+        reset({ identifier: saved, password: '', remember: true });
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [reset]);
+
   const onSubmit = async (data) => {
     setApiError('');
+    const remember = Boolean(data.remember);
     try {
+      try {
+        if (remember) {
+          localStorage.setItem(REMEMBER_IDENTIFIER_KEY, data.identifier.trim());
+        } else {
+          localStorage.removeItem(REMEMBER_IDENTIFIER_KEY);
+        }
+      } catch {
+        /* ignore storage errors */
+      }
+
       const user = await login({
         identifier: data.identifier,
         password: data.password,
-        remember: data.remember,
+        remember,
       });
       if (user.role === 'admin') {
         navigate('/admin');

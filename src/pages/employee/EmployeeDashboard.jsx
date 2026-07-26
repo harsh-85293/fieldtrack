@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, MapPin, Plus, Wifi, WifiOff, RefreshCw, LogIn, LogOut, Navigation } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { sessionService, visitService } from '../../api/services.js';
+import { sessionService, visitService, locationService } from '../../api/services.js';
 import {
   LoadingSpinner, EmptyState, ErrorState, Badge, Button, Card,
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
-import { formatDateTime, formatTime, formatDuration, formatDistance, formatDate } from '../../utils/format.js';
-import { getQueuedLocationCount } from '../../lib/offlineDb.js';
+import { formatDateTime, formatTime, formatDuration, formatDistance, formatDate, entityId } from '../../utils/format.js';
+import { getQueuedLocationCount, queueLocationPoint, getQueuedLocationPoints, clearQueuedLocationPoints, getPendingVisits, removePendingVisit, getPendingVisitCount } from '../../lib/offlineDb.js';
+import { extractList } from '../../utils/apiData.js';
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();
@@ -38,8 +39,44 @@ export default function EmployeeDashboard() {
   const submittingRef = useRef(false);
   const watchIdRef = useRef(null);
   const lastPointRef = useRef(null);
+  const pendingPointsRef = useRef([]);
+  const flushTimerRef = useRef(null);
+  const handleSyncRef = useRef(null);
 
   const today = new Date().toISOString().split('T')[0];
+
+  const refreshQueueCount = useCallback(async () => {
+    const [locCount, visitCount] = await Promise.all([
+      getQueuedLocationCount(),
+      getPendingVisitCount(),
+    ]);
+    setQueuedCount(locCount + visitCount);
+  }, []);
+
+  const flushLocationPoints = useCallback(async (session, points) => {
+    const sessionId = entityId(session);
+    if (!sessionId || !points?.length) return;
+    try {
+      await locationService.upload({
+        sessionId,
+        points: points.map((p) => ({
+          latitude: p.latitude,
+          longitude: p.longitude,
+          accuracy: p.accuracy,
+          speed: p.speed,
+          heading: p.heading,
+          clientTimestamp: p.clientTimestamp || p.timestamp || new Date().toISOString(),
+        })),
+      });
+      refreshQueueCount();
+    } catch (err) {
+      // Offline / network — queue for later
+      for (const p of points) {
+        await queueLocationPoint({ ...p, sessionId });
+      }
+      refreshQueueCount();
+    }
+  }, [refreshQueueCount]);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -50,14 +87,11 @@ export default function EmployeeDashboard() {
         sessionService.getMySessions({ date: today }),
         visitService.getMyVisits({ date: today }),
       ]);
-      const sessData = sessRes.data.data || sessRes.data;
-      const sessions = sessData.sessions || sessData.items || sessData || [];
+      const sessions = extractList(sessRes, 'sessions');
       setTodaySessions(sessions);
       const active = sessions.find((s) => s.status === 'active') || null;
       setActiveSession(active);
-
-      const visData = visRes.data.data || visRes.data;
-      setTodayVisits(visData.visits || visData.items || visData || []);
+      setTodayVisits(extractList(visRes, 'visits'));
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load data');
     } finally {
@@ -67,13 +101,22 @@ export default function EmployeeDashboard() {
 
   useEffect(() => {
     loadData();
-    getQueuedLocationCount().then(setQueuedCount);
-  }, [loadData]);
+    refreshQueueCount();
+  }, [loadData, refreshQueueCount]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      refreshQueueCount();
+      handleSyncRef.current?.();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [refreshQueueCount]);
 
   // Timer for active session
   useEffect(() => {
-    if (activeSession && activeSession.checkInTime) {
-      const start = new Date(activeSession.checkInTime).getTime();
+    if (activeSession && (activeSession.checkInAt || activeSession.checkInTime)) {
+      const start = new Date(activeSession.checkInAt || activeSession.checkInTime).getTime();
       const update = () => {
         setElapsed(Math.floor((Date.now() - start) / 1000));
       };
@@ -83,12 +126,16 @@ export default function EmployeeDashboard() {
     }
   }, [activeSession]);
 
-  // GPS tracking
+  // GPS tracking + upload to server
   useEffect(() => {
     if (!activeSession) {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
+      }
+      if (flushTimerRef.current) {
+        clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
       }
       setGpsStatus('idle');
       return;
@@ -107,11 +154,14 @@ export default function EmployeeDashboard() {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
+          speed: pos.coords.speed,
+          heading: pos.coords.heading,
+          clientTimestamp: new Date().toISOString(),
           timestamp: new Date().toISOString(),
         };
         setCurrentPosition(point);
+        pendingPointsRef.current.push(point);
 
-        // Calculate distance from last point
         if (lastPointRef.current) {
           const d = haversineDistance(
             lastPointRef.current.latitude,
@@ -119,7 +169,7 @@ export default function EmployeeDashboard() {
             point.latitude,
             point.longitude
           );
-          if (d > 2) { // Only count if moved more than 2 meters
+          if (d > 2) {
             setDistance((prev) => prev + d);
             lastPointRef.current = point;
           }
@@ -134,13 +184,26 @@ export default function EmployeeDashboard() {
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 
+    // Flush buffered GPS points every 15s
+    flushTimerRef.current = setInterval(() => {
+      const batch = pendingPointsRef.current.splice(0, pendingPointsRef.current.length);
+      if (batch.length > 0) flushLocationPoints(activeSession, batch);
+    }, 15000);
+
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      if (flushTimerRef.current) {
+        clearInterval(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      // Flush remaining points on unmount / session end
+      const batch = pendingPointsRef.current.splice(0, pendingPointsRef.current.length);
+      if (batch.length > 0) flushLocationPoints(activeSession, batch);
     };
-  }, [activeSession]);
+  }, [activeSession, flushLocationPoints]);
 
   // Handle check-in
   const handleCheckIn = async () => {
@@ -167,10 +230,15 @@ export default function EmployeeDashboard() {
           const session = res.data.data || res.data;
           setActiveSession(session);
           setDistance(0);
-          lastPointRef.current = {
+          const checkInPoint = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            clientTimestamp: new Date().toISOString(),
           };
+          lastPointRef.current = checkInPoint;
+          pendingPointsRef.current = [checkInPoint];
+          await flushLocationPoints(session, [checkInPoint]);
           toastSuccess('Checked in successfully');
           loadData();
         } catch (err) {
@@ -207,7 +275,17 @@ export default function EmployeeDashboard() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          await sessionService.checkOut(activeSession.id, {
+          // Flush any buffered GPS points before checkout
+          const batch = pendingPointsRef.current.splice(0, pendingPointsRef.current.length);
+          batch.push({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            clientTimestamp: new Date().toISOString(),
+          });
+          await flushLocationPoints(activeSession, batch);
+
+          await sessionService.checkOut(entityId(activeSession), {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy,
@@ -237,19 +315,54 @@ export default function EmployeeDashboard() {
   const handleSync = async () => {
     setSyncStatus('syncing');
     try {
-      const count = await getQueuedLocationCount();
-      if (count > 0) {
-        // Would upload queued points here
-        toastInfo(`Syncing ${count} queued points...`);
+      const queued = await getQueuedLocationPoints();
+      if (queued.length > 0) {
+        const bySession = queued.reduce((acc, p) => {
+          const key = p.sessionId || 'unknown';
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(p);
+          return acc;
+        }, {});
+        for (const [sessionId, points] of Object.entries(bySession)) {
+          if (sessionId === 'unknown') continue;
+          await locationService.upload({ sessionId, points });
+        }
+        await clearQueuedLocationPoints();
       }
+
+      const pendingVisits = await getPendingVisits();
+      for (const visit of pendingVisits) {
+        try {
+          await visitService.create(visit);
+          await removePendingVisit(visit.idempotencyKey);
+        } catch (visitErr) {
+          const msg = visitErr.response?.data?.message || '';
+          if (msg.includes('idempotent') || visitErr.response?.status === 409) {
+            await removePendingVisit(visit.idempotencyKey);
+            continue;
+          }
+          if (!navigator.onLine || visitErr.code === 'ERR_NETWORK' || !visitErr.response) {
+            throw visitErr;
+          }
+          // Keep bad payloads queued for retry after fix
+        }
+      }
+
+      const [locCount, visitCount] = await Promise.all([
+        getQueuedLocationCount(),
+        getPendingVisitCount(),
+      ]);
+      setQueuedCount(locCount + visitCount);
       setSyncStatus('synced');
-      setQueuedCount(0);
       toastSuccess('All data synced');
+      loadData();
     } catch (err) {
       setSyncStatus('error');
       toastError('Sync failed');
     }
   };
+
+  handleSyncRef.current = handleSync;
 
   if (loading) return <LoadingSpinner className="py-20" />;
   if (error) return <ErrorState message={error} onRetry={loadData} />;
@@ -269,7 +382,7 @@ export default function EmployeeDashboard() {
       {/* Date and greeting */}
       <div className="text-center pt-2">
         <p className="text-sm text-gray-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
-        <h1 className="text-xl font-bold text-gray-900 mt-1">Hello, {user?.name?.split(' ')[0]}</h1>
+        <h1 className="text-xl font-bold text-gray-900 mt-1">Hello, {(user?.fullName || user?.name || '').split(' ')[0] || 'there'}</h1>
       </div>
 
       {/* Attendance status */}
@@ -296,7 +409,7 @@ export default function EmployeeDashboard() {
                 {formatDuration(elapsed)}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Since {formatTime(activeSession.checkInTime)}
+                Since {formatTime(activeSession.checkInAt || activeSession.checkInTime)}
               </p>
             </div>
           )}
@@ -335,11 +448,13 @@ export default function EmployeeDashboard() {
           ) : (
             <button
               onClick={handleCheckIn}
-              disabled={submittingRef.current}
+              disabled={submittingRef.current || gpsStatus === 'denied' || gpsStatus === 'unavailable'}
               className="w-full py-4 bg-emerald-600 text-white text-lg font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               <LogIn className="w-6 h-6" />
-              Check In
+              {todaySessions.some((s) => s.status === 'completed' || s.status === 'COMPLETED')
+                ? 'Start New Session'
+                : 'Check In'}
             </button>
           )}
         </div>
@@ -401,12 +516,12 @@ export default function EmployeeDashboard() {
         ) : (
           <div className="divide-y divide-gray-50">
             {todaySessions.map((s) => (
-              <div key={s.id} className="px-6 py-3 flex items-center justify-between">
+              <div key={s._id || s.id} className="px-6 py-3 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900">
-                    {formatTime(s.checkInTime)} - {s.checkOutTime ? formatTime(s.checkOutTime) : 'Active'}
+                    {formatTime(s.checkInAt || s.checkInTime)} - {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
                   </p>
-                  <p className="text-xs text-gray-500">{formatDuration(s.duration)}</p>
+                  <p className="text-xs text-gray-500">{formatDuration(s.totalDurationMs ? Math.floor(s.totalDurationMs / 1000) : (s.duration || 0))}</p>
                 </div>
                 <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
               </div>
@@ -423,16 +538,16 @@ export default function EmployeeDashboard() {
           <div className="divide-y divide-gray-50">
             {todayVisits.map((v) => (
               <div
-                key={v.id}
-                onClick={() => navigate(`/app/visits/${v.id}`)}
+                key={v._id || v.id}
+                onClick={() => navigate(`/app/visits/${v._id || v.id}`)}
                 className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
               >
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{v.storeName || '—'}</p>
-                  <p className="text-xs text-gray-500">{formatDateTime(v.visitTime)}</p>
+                  <p className="text-sm font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
+                  <p className="text-xs text-gray-500">{formatDateTime(v.visitDate || v.visitTime)}</p>
                 </div>
                 <span className="text-sm font-semibold text-primary-700">
-                  {v.itemCount || 0} items
+                  {v.totalQuantity || v.itemCount || v.items?.length || 0} items
                 </span>
               </div>
             ))}

@@ -30,10 +30,11 @@ router.post(
 router.post('/check-out', checkOut);
 router.get('/me/active', getMyActiveSession);
 router.get('/me', getMySessions);
-router.get('/:id', getSession);
-router.get('/:id/route', getSessionRoute);
-
+router.get('/my', getMySessions); // alias
+router.get('/my/active', getMyActiveSession); // alias
 router.get('/', adminOnly, listSessions);
+router.get('/:id/route', getSessionRoute);
+router.get('/:id', getSession);
 router.put('/:id/correct', adminOnly, [body('reason').notEmpty().withMessage('Reason is required')], handleValidation, correctSession);
 
 export default router;

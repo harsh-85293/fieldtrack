@@ -188,40 +188,89 @@ export async function productReport(req, res, next) {
 }
 
 /**
- * Fetch date report data.
+ * Fetch date report data (visits + sessions/distance).
  */
 export async function fetchDateReport(filters = {}) {
   const { startDate, endDate } = filters;
-  const match = {};
+  const visitMatch = {};
+  const sessionMatch = {};
   if (startDate || endDate) {
-    match.visitDate = {};
-    if (startDate) match.visitDate.$gte = startOfDayUTC(startDate);
-    if (endDate) match.visitDate.$lte = endOfDayUTC(endDate);
+    visitMatch.visitDate = {};
+    sessionMatch.sessionDate = {};
+    if (startDate) {
+      visitMatch.visitDate.$gte = startOfDayUTC(startDate);
+      sessionMatch.sessionDate.$gte = startOfDayUTC(startDate);
+    }
+    if (endDate) {
+      visitMatch.visitDate.$lte = endOfDayUTC(endDate);
+      sessionMatch.sessionDate.$lte = endOfDayUTC(endDate);
+    }
   }
 
-  const pipeline = [
-    { $match: match },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$visitDate' } },
-        totalVisits: { $sum: 1 },
-        totalQuantity: { $sum: '$totalQuantity' },
-        totalValue: { $sum: '$totalValue' },
-        totalCollected: {
-          $sum: {
-            $reduce: {
-              input: '$items',
-              initialValue: 0,
-              in: { $add: ['$value', { $ifNull: ['$this.collectedAmount', 0] }] },
+  const [visitRows, sessionRows] = await Promise.all([
+    StoreVisit.aggregate([
+      { $match: visitMatch },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$visitDate' } },
+          totalVisits: { $sum: 1 },
+          totalQuantity: { $sum: '$totalQuantity' },
+          totalValue: { $sum: '$totalValue' },
+          totalCollected: {
+            $sum: {
+              $reduce: {
+                input: '$items',
+                initialValue: 0,
+                in: { $add: ['$value', { $ifNull: ['$this.collectedAmount', 0] }] },
+              },
             },
           },
         },
       },
-    },
-    { $sort: { _id: 1 } },
-  ];
+      { $sort: { _id: 1 } },
+    ]),
+    WorkSession.aggregate([
+      { $match: sessionMatch },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$sessionDate' } },
+          totalSessions: { $sum: 1 },
+          totalDistanceKm: { $sum: '$totalDistanceKm' },
+        },
+      },
+    ]),
+  ]);
 
-  return StoreVisit.aggregate(pipeline);
+  const byDate = new Map();
+  for (const row of visitRows) {
+    byDate.set(row._id, {
+      _id: row._id,
+      date: row._id,
+      totalVisits: row.totalVisits,
+      totalQuantity: row.totalQuantity,
+      totalValue: row.totalValue,
+      totalCollected: row.totalCollected,
+      totalSessions: 0,
+      totalDistanceKm: 0,
+    });
+  }
+  for (const row of sessionRows) {
+    const existing = byDate.get(row._id) || {
+      _id: row._id,
+      date: row._id,
+      totalVisits: 0,
+      totalQuantity: 0,
+      totalValue: 0,
+      totalCollected: 0,
+      totalSessions: 0,
+      totalDistanceKm: 0,
+    };
+    existing.totalSessions = row.totalSessions;
+    existing.totalDistanceKm = Number((row.totalDistanceKm || 0).toFixed(2));
+    byDate.set(row._id, existing);
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => String(a._id).localeCompare(String(b._id)));
 }
 
 /**

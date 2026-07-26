@@ -1,4 +1,5 @@
 import 'express-async-errors';
+import 'dotenv/config';
 
 import express from 'express';
 import helmet from 'helmet';
@@ -26,7 +27,7 @@ import auditRoutes from './routes/auditRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 // ---- Security & middleware ----
 app.use(helmet());
@@ -51,10 +52,14 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('combined'));
 }
 
-// Rate limiter
+// Rate limiter (much looser in development — React Strict Mode + dashboards fire many requests)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  max: parseInt(
+    process.env.RATE_LIMIT_MAX ||
+      (process.env.NODE_ENV === 'production' ? '100' : '5000'),
+    10,
+  ),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -64,7 +69,22 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// ---- Health check ----
+// ---- Root & health ----
+app.get('/', (req, res) => {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  // Browsers hitting the API root should land on the app
+  if (req.accepts('html')) {
+    return res.redirect(302, clientUrl);
+  }
+  res.json({
+    success: true,
+    message: 'FieldTrack API is running',
+    app: clientUrl,
+    health: '/health',
+    api: '/api/v1',
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     success: true,

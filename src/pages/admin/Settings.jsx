@@ -5,6 +5,7 @@ import {
   LoadingCard, EmptyState, ErrorState, Button, Input,
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
+import { extractList } from '../../utils/apiData.js';
 
 export default function Settings() {
   const [settings, setSettings] = useState([]);
@@ -20,8 +21,7 @@ export default function Settings() {
     setError(null);
     try {
       const res = await settingsService.getAll();
-      const data = res.data.data || res.data;
-      setSettings(data.settings || data.items || data || []);
+      setSettings(extractList(res, 'settings'));
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load settings');
     } finally {
@@ -34,8 +34,8 @@ export default function Settings() {
   }, [loadSettings]);
 
   const startEdit = (setting) => {
-    setEditingId(setting.id);
-    setEditValue(setting.value);
+    setEditingId(setting.key);
+    setEditValue(setting.value == null ? '' : String(setting.value));
   };
 
   const cancelEdit = () => {
@@ -46,7 +46,7 @@ export default function Settings() {
   const saveEdit = async (setting) => {
     setSaving(true);
     try {
-      await settingsService.update(setting.id, { value: editValue });
+      await settingsService.update(setting.key, { value: editValue });
       toastSuccess('Setting updated successfully');
       setEditingId(null);
       setEditValue('');
@@ -87,11 +87,11 @@ export default function Settings() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {settings.map((setting) => (
-                  <tr key={setting.id} className="hover:bg-gray-50">
+                  <tr key={setting.key} className="hover:bg-gray-50">
                     <td className="px-6 py-3 font-mono text-gray-900">{setting.key}</td>
-                    <td className="px-6 py-3 text-gray-600">{setting.description || '—'}</td>
+                    <td className="px-6 py-3 text-gray-600">{setting.label || setting.description || '—'}</td>
                     <td className="px-6 py-3">
-                      {editingId === setting.id ? (
+                      {editingId === setting.key ? (
                         <Input
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
@@ -103,19 +103,20 @@ export default function Settings() {
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex items-center justify-end gap-2">
-                        {editingId === setting.id ? (
+                        {editingId === setting.key ? (
                           <>
                             <Button size="sm" onClick={() => saveEdit(setting)} loading={saving}>
                               <Save className="w-4 h-4" />
                               Save
                             </Button>
-                            <Button size="sm" variant="secondary" onClick={cancelEdit}>
+                            <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={saving}>
                               <X className="w-4 h-4" />
                               Cancel
                             </Button>
                           </>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => startEdit(setting)}
                             className="p-1.5 text-gray-500 hover:text-primary-700 hover:bg-primary-50 rounded-lg"
                           >

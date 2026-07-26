@@ -76,6 +76,10 @@ const workSessionSchema = new Schema(
 
 workSessionSchema.index({ employee: 1, sessionDate: 1 });
 workSessionSchema.index({ employee: 1, status: 1 });
+workSessionSchema.index(
+  { employee: 1 },
+  { unique: true, partialFilterExpression: { status: SESSION_STATUS.ACTIVE } },
+);
 workSessionSchema.index({ status: 1, sessionDate: 1 });
 workSessionSchema.index({ sessionDate: 1 });
 

@@ -11,23 +11,27 @@ const isDBConnectedSafe = () => isDBConnected();
 
 /**
  * Generate a JWT and set it as an HTTP-only cookie.
+ * remember=true  → long-lived token + persistent cookie (30d)
+ * remember=false → shorter token + session cookie (cleared when browser closes)
  */
-function signToken(userId) {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+function signToken(userId, remember = false) {
+  const expiresIn = remember
+    ? (process.env.JWT_REMEMBER_EXPIRES_IN || '30d')
+    : (process.env.JWT_EXPIRES_IN || '1d');
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn });
 }
 
 function setTokenCookie(res, token, remember = false) {
-  const maxAge = remember
-    ? 30 * 24 * 60 * 60 * 1000 // 30 days
-    : 7 * 24 * 60 * 60 * 1000; // 7 days
-  res.cookie('token', token, {
+  const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge,
-  });
+  };
+  if (remember) {
+    options.maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
+  }
+  // No maxAge → browser session cookie (expires on browser close)
+  res.cookie('token', token, options);
 }
 
 /**
@@ -44,13 +48,16 @@ export async function login(req, res, next) {
       throw new AppError('Please provide identifier and password', 400);
     }
 
+    const normalizedIdentifier = String(identifier).toLowerCase().trim();
+    const normalizedPassword = String(password).trim();
+
     // Try to find user by email or employeeId
     const query = {
-      $or: [{ email: identifier.toLowerCase().trim() }],
+      $or: [
+        { email: normalizedIdentifier },
+        { employeeId: String(identifier).toUpperCase().trim() },
+      ],
     };
-    if (identifier.length > 0) {
-      query.$or.push({ employeeId: identifier.toUpperCase().trim() });
-    }
 
     const user = await User.findOne(query).select('+password');
     if (!user) {
@@ -59,8 +66,17 @@ export async function login(req, res, next) {
     if (!user.isActive) {
       throw new AppError('Account is deactivated', 403);
     }
+    if (user.status === 'pending') {
+      throw new AppError('Your account is pending admin approval', 403);
+    }
+    if (user.status === 'suspended') {
+      throw new AppError('Your account has been suspended', 403);
+    }
+    if (user.status === 'rejected') {
+      throw new AppError('Your registration was rejected', 403);
+    }
 
-    const isMatch = await user.matchPassword(password);
+    const isMatch = await user.matchPassword(normalizedPassword);
     if (!isMatch) {
       throw new AppError('Invalid credentials', 401);
     }
@@ -68,8 +84,8 @@ export async function login(req, res, next) {
     user.lastLoginAt = new Date();
     await user.save({ validateBeforeSave: false });
 
-    const token = signToken(user._id);
-    setTokenCookie(res, token, remember);
+    const token = signToken(user._id, Boolean(remember));
+    setTokenCookie(res, token, Boolean(remember));
 
     await logAudit({
       req,

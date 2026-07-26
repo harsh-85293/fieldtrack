@@ -19,9 +19,9 @@ router.post(
   createVisit,
 );
 router.get('/me', getMyVisits);
-router.get('/:id', getVisit);
-
+router.get('/my', getMyVisits); // alias
 router.get('/', adminOnly, listVisits);
+router.get('/:id', getVisit);
 router.put('/:id/correct', adminOnly, [body('reason').notEmpty().withMessage('Reason is required')], handleValidation, correctVisit);
 
 export default router;

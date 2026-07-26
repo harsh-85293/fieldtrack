@@ -67,11 +67,14 @@ export async function getStore(req, res, next) {
  */
 export async function createStore(req, res, next) {
   try {
-    const { name, code, ownerName, phone, address, city, state, postalCode, lat, lng, isActive } = req.body;
+    const { name, code, ownerName, phone, address, city, state, postalCode, lat, lng, latitude, longitude, isActive } = req.body;
 
     if (!name || !code) {
       throw new AppError('name and code are required', 400);
     }
+
+    const resolvedLat = lat ?? latitude;
+    const resolvedLng = lng ?? longitude;
 
     const store = await Store.create({
       name,
@@ -82,7 +85,7 @@ export async function createStore(req, res, next) {
       city,
       state,
       postalCode,
-      location: lat != null && lng != null ? { lat, lng } : undefined,
+      location: resolvedLat != null && resolvedLng != null ? { lat: Number(resolvedLat), lng: Number(resolvedLng) } : undefined,
       isActive: isActive ?? true,
       createdBy: req.user._id,
     });
@@ -106,7 +109,7 @@ export async function createStore(req, res, next) {
  */
 export async function updateStore(req, res, next) {
   try {
-    const { name, code, ownerName, phone, address, city, state, postalCode, lat, lng, isActive } = req.body;
+    const { name, code, ownerName, phone, address, city, state, postalCode, lat, lng, latitude, longitude, isActive } = req.body;
 
     const store = await Store.findById(req.params.id);
     if (!store) throw new AppError('Store not found', 404);
@@ -120,7 +123,11 @@ export async function updateStore(req, res, next) {
     if (city !== undefined) store.city = city;
     if (state !== undefined) store.state = state;
     if (postalCode !== undefined) store.postalCode = postalCode;
-    if (lat !== undefined && lng !== undefined) store.location = { lat, lng };
+    const resolvedLat = lat ?? latitude;
+    const resolvedLng = lng ?? longitude;
+    if (resolvedLat !== undefined && resolvedLng !== undefined) {
+      store.location = { lat: Number(resolvedLat), lng: Number(resolvedLng) };
+    }
     if (isActive !== undefined) store.isActive = isActive;
     await store.save();
 

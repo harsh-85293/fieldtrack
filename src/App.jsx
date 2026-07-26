@@ -129,7 +129,12 @@ function AppRoutes() {
 export default function App() {
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID || 'not-configured'}>
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <ToastProvider>
           <AuthProvider>
             <AppRoutes />

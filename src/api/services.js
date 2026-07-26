@@ -8,7 +8,7 @@ export const authService = {
   logout: () => client.post('/auth/logout'),
   getMe: () => client.get('/auth/me'),
   changePassword: (data) => client.post('/auth/change-password', data),
-  resetPassword: (userId) => client.post(`/auth/reset-password/${userId}`),
+  resetPassword: (userId) => client.put(`/employees/${userId}/reset-password`),
 };
 
 // ─── Employee Service ───
@@ -32,20 +32,30 @@ export const sessionService = {
   getAll: (params) => client.get('/sessions', { params }),
   getById: (id) => client.get(`/sessions/${id}`),
   checkIn: (data) => client.post('/sessions/check-in', data),
-  checkOut: (id, data) => client.post(`/sessions/${id}/check-out`, data),
-  getMySessions: (params) => client.get('/sessions/my', { params }),
-  getLocationPoints: (id) => client.get(`/sessions/${id}/locations`),
+  checkOut: (_id, data) => client.post('/sessions/check-out', data ?? _id),
+  getMySessions: (params = {}) => {
+    const query = { ...params };
+    if (query.date && !query.startDate && !query.endDate) {
+      query.startDate = query.date;
+      query.endDate = query.date;
+      delete query.date;
+    }
+    return client.get('/sessions/me', { params: query });
+  },
+  getActiveSession: () => client.get('/sessions/me/active'),
+  getLocationPoints: (id) => client.get(`/sessions/${id}/route`),
 };
 
 // ─── Location Service ───
 export const locationService = {
-  upload: (data) => client.post('/locations/batch', data),
-  getRoute: (sessionId) => client.get(`/locations/route/${sessionId}`),
+  upload: (data) => client.post('/locations', data),
+  getRoute: (sessionId) => client.get(`/sessions/${sessionId}/route`),
 };
 
 // ─── Store Service ───
 export const storeService = {
   getAll: (params) => client.get('/stores', { params }),
+  getActive: () => client.get('/stores/active'),
   getById: (id) => client.get(`/stores/${id}`),
   create: (data) => client.post('/stores', data),
   update: (id, data) => client.put(`/stores/${id}`, data),
@@ -55,6 +65,7 @@ export const storeService = {
 // ─── Product Service ───
 export const productService = {
   getAll: (params) => client.get('/products', { params }),
+  getActive: () => client.get('/products/active'),
   getById: (id) => client.get(`/products/${id}`),
   create: (data) => client.post('/products', data),
   update: (id, data) => client.put(`/products/${id}`, data),
@@ -66,8 +77,16 @@ export const visitService = {
   getAll: (params) => client.get('/visits', { params }),
   getById: (id) => client.get(`/visits/${id}`),
   create: (data) => client.post('/visits', data),
-  getMyVisits: (params) => client.get('/visits/my', { params }),
-  correct: (id, data) => client.post(`/visits/${id}/correct`, data),
+  getMyVisits: (params = {}) => {
+    const query = { ...params };
+    if (query.date && !query.startDate && !query.endDate) {
+      query.startDate = query.date;
+      query.endDate = query.date;
+      delete query.date;
+    }
+    return client.get('/visits/me', { params: query });
+  },
+  correct: (id, data) => client.put(`/visits/${id}/correct`, data),
 };
 
 // ─── Dashboard Service ───
@@ -78,22 +97,26 @@ export const dashboardService = {
   getTopEmployees: (params) => client.get('/dashboard/top-employees', { params }),
   getProductChart: (params) => client.get('/dashboard/product-chart', { params }),
   getRecentActivity: (params) => client.get('/dashboard/recent-activity', { params }),
+  getLive: () => client.get('/dashboard/live'),
 };
 
 // ─── Report Service ───
 export const reportService = {
-  getByEmployee: (params) => client.get('/reports/by-employee', { params }),
-  getByStore: (params) => client.get('/reports/by-store', { params }),
-  getByProduct: (params) => client.get('/reports/by-product', { params }),
-  getByDate: (params) => client.get('/reports/by-date', { params }),
-  exportPDF: (params) => client.get('/reports/export/pdf', { params, responseType: 'blob' }),
-  exportExcel: (params) => client.get('/reports/export/excel', { params, responseType: 'blob' }),
-  exportCSV: (params) => client.get('/reports/export/csv', { params, responseType: 'blob' }),
+  getByEmployee: (params) => client.get('/reports/employee', { params }),
+  getByStore: (params) => client.get('/reports/store', { params }),
+  getByProduct: (params) => client.get('/reports/product', { params }),
+  getByDate: (params) => client.get('/reports/date', { params }),
+  exportPDF: (type, params) =>
+    client.get(`/reports/export/${type}/pdf`, { params, responseType: 'blob' }),
+  exportExcel: (type, params) =>
+    client.get(`/reports/export/${type}/excel`, { params, responseType: 'blob' }),
+  exportCSV: (type, params) =>
+    client.get(`/reports/export/${type}/csv`, { params, responseType: 'blob' }),
 };
 
 // ─── Audit Service ───
 export const auditService = {
-  getAll: (params) => client.get('/audit-logs', { params }),
+  getAll: (params) => client.get('/audit', { params }),
 };
 
 // ─── Settings Service ───

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { MapPinned, Search } from 'lucide-react';
 import { visitService, employeeService, storeService } from '../../api/services.js';
 import {
   LoadingCard, EmptyState, ErrorState, Badge, Pagination,
 } from '../../components/ui/index.jsx';
-import { formatDateTime, formatMoney } from '../../utils/format.js';
+import { formatDateTime, formatRupees, entityId } from '../../utils/format.js';
+import { extractList, extractPagination } from '../../utils/apiData.js';
 
 export default function VisitList() {
+  const navigate = useNavigate();
   const [visits, setVisits] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [stores, setStores] = useState([]);
@@ -24,10 +26,8 @@ export default function VisitList() {
         employeeService.getAll({ limit: 1000 }),
         storeService.getAll({ limit: 1000 }),
       ]);
-      const empData = empRes.data.data || empRes.data;
-      setEmployees(empData.employees || empData.items || empData || []);
-      const storeData = storeRes.data.data || storeRes.data;
-      setStores(storeData.stores || storeData.items || storeData || []);
+      setEmployees(extractList(empRes, 'employees'));
+      setStores(extractList(storeRes, 'stores'));
     } catch { /* ignore */ }
   }, []);
 
@@ -35,11 +35,14 @@ export default function VisitList() {
     setLoading(true);
     setError(null);
     try {
-      const params = { page, search, ...filters };
+      const params = { page };
+      if (search) params.search = search;
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== '' && value != null) params[key] = value;
+      });
       const res = await visitService.getAll(params);
-      const data = res.data.data || res.data;
-      setVisits(data.visits || data.items || data || []);
-      setTotalPages(data.totalPages || data.pages || 1);
+      setVisits(extractList(res, 'visits'));
+      setTotalPages(extractPagination(res).pages);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load visits');
     } finally {
@@ -81,7 +84,7 @@ export default function VisitList() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
           >
             <option value="">All Employees</option>
-            {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+            {employees.map((emp) => <option key={entityId(emp)} value={entityId(emp)}>{emp.fullName || emp.name}</option>)}
           </select>
           <select
             value={filters.storeId}
@@ -89,7 +92,7 @@ export default function VisitList() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
           >
             <option value="">All Stores</option>
-            {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {stores.map((s) => <option key={entityId(s)} value={entityId(s)}>{s.name}</option>)}
           </select>
           <input type="date" value={filters.startDate} onChange={(e) => { setFilters(f => ({ ...f, startDate: e.target.value })); setPage(1); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           <input type="date" value={filters.endDate} onChange={(e) => { setFilters(f => ({ ...f, endDate: e.target.value })); setPage(1); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
@@ -99,6 +102,7 @@ export default function VisitList() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
           >
             <option value="">All Locations</option>
+            <option value="false">On-site Only</option>
             <option value="true">Outside Radius Only</option>
           </select>
         </div>
@@ -128,39 +132,51 @@ export default function VisitList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {visits.map((v) => (
-                    <tr key={v.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-3 text-gray-700">{v.employeeName || '—'}</td>
-                      <td className="px-6 py-3 text-gray-700">{v.storeName || '—'}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatDateTime(v.visitTime)}</td>
-                      <td className="px-6 py-3 text-gray-600">{v.itemCount || 0}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatMoney(v.totalAmount || 0)}</td>
+                  {visits.map((v) => {
+                    const id = entityId(v);
+                    const outside = v.isOutsideRadius ?? v.outsideRadius;
+                    return (
+                    <tr
+                      key={id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => id && navigate(`/admin/visits/${id}`)}
+                    >
+                      <td className="px-6 py-3 text-gray-700">{v.employee?.fullName || v.employeeName || '—'}</td>
+                      <td className="px-6 py-3 text-gray-700">{v.store?.name || v.storeName || '—'}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatDateTime(v.visitDate || v.visitTime)}</td>
+                      <td className="px-6 py-3 text-gray-600">{v.totalQuantity || v.items?.length || v.itemCount || 0}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatRupees(v.totalValue ?? v.totalAmount ?? 0)}</td>
                       <td className="px-6 py-3">
-                        {v.outsideRadius ? (
+                        {outside ? (
                           <Badge color="red">Outside</Badge>
                         ) : (
                           <Badge color="green">On-site</Badge>
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
           <div className="md:hidden space-y-3">
-            {visits.map((v) => (
-              <Link key={v.id} to={`/admin/visits/${v.id}`} className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300">
+            {visits.map((v) => {
+              const id = entityId(v);
+              if (!id) return null;
+              const outside = v.isOutsideRadius ?? v.outsideRadius;
+              return (
+              <Link key={id} to={`/admin/visits/${id}`} className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="font-medium text-gray-900">{v.storeName || '—'}</p>
-                    <p className="text-xs text-gray-500">{v.employeeName || '—'}</p>
-                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(v.visitTime)}</p>
+                    <p className="font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
+                    <p className="text-xs text-gray-500">{v.employee?.fullName || v.employeeName || '—'}</p>
+                    <p className="text-xs text-gray-500 mt-1">{formatDateTime(v.visitDate || v.visitTime)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-primary-700">{formatMoney(v.totalAmount || 0)}</p>
-                    {v.outsideRadius ? (
+                    <p className="font-semibold text-primary-700">{formatRupees(v.totalValue ?? v.totalAmount ?? 0)}</p>
+                    {outside ? (
                       <Badge color="red" className="mt-1">Outside</Badge>
                     ) : (
                       <Badge color="green" className="mt-1">On-site</Badge>
@@ -168,7 +184,8 @@ export default function VisitList() {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
 
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />

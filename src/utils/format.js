@@ -55,6 +55,40 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(2)} km`;
 }
 
+/** Mongo docs expose `_id`; some clients use `id`. */
+export function entityId(doc) {
+  if (!doc) return null;
+  return doc._id || doc.id || null;
+}
+
+export function sessionDurationSeconds(session) {
+  if (!session) return 0;
+  if (session.totalDurationMs != null) return Math.floor(Number(session.totalDurationMs) / 1000);
+  if (session.duration != null) return Number(session.duration);
+  const start = session.checkInAt || session.checkInTime;
+  const end = session.checkOutAt || session.checkOutTime;
+  if (start && end) {
+    return Math.max(0, Math.floor((new Date(end) - new Date(start)) / 1000));
+  }
+  return 0;
+}
+
+/** API stores km; UI helpers expect meters. */
+export function sessionDistanceMeters(session) {
+  if (!session) return null;
+  if (session.totalDistanceKm != null) return Number(session.totalDistanceKm) * 1000;
+  if (session.totalDistance != null) return Number(session.totalDistance);
+  return null;
+}
+
+export function sessionCheckIn(session) {
+  return session?.checkInAt || session?.checkInTime || null;
+}
+
+export function sessionCheckOut(session) {
+  return session?.checkOutAt || session?.checkOutTime || null;
+}
+
 export function fromMinor(amount) {
   if (amount == null) return 0;
   return amount / 100;
@@ -67,6 +101,15 @@ export function toMinor(amount) {
 
 export function formatMoney(minorAmount, currency = '₹') {
   const value = fromMinor(minorAmount);
+  return `${currency}${value.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/** Format amount already in major units (rupees). Visit API money getters return major. */
+export function formatRupees(amount, currency = '₹') {
+  const value = Number(amount) || 0;
   return `${currency}${value.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

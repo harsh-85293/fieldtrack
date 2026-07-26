@@ -1,13 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { ArrowLeft, Clock, MapPin, User, Route as RouteIcon } from 'lucide-react';
 import { sessionService } from '../../api/services.js';
 import {
   LoadingSpinner, ErrorState, Badge, Card, EmptyState,
 } from '../../components/ui/index.jsx';
-import { formatDateTime, formatDuration, formatDistance } from '../../utils/format.js';
+import ExactLocation from '../../components/maps/ExactLocation.jsx';
+import RouteMap from '../../components/maps/RouteMap.jsx';
+import {
+  formatDateTime,
+  formatDuration,
+  formatDistance,
+  entityId,
+  sessionCheckIn,
+  sessionCheckOut,
+  sessionDurationSeconds,
+  sessionDistanceMeters,
+} from '../../utils/format.js';
+import { extractList } from '../../utils/apiData.js';
+import { toLatLng } from '../../utils/geo.js';
 
 export default function SessionDetail() {
   const { id } = useParams();
@@ -15,10 +26,13 @@ export default function SessionDetail() {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
 
   useEffect(() => {
+    if (!id || id === 'undefined') {
+      setError('Invalid session');
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const [sessRes, locRes] = await Promise.all([
@@ -26,7 +40,7 @@ export default function SessionDetail() {
           sessionService.getLocationPoints(id),
         ]);
         setSession(sessRes.data.data || sessRes.data);
-        setLocations(locRes.data.data || locRes.data || []);
+        setLocations(extractList(locRes));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to load session');
       } finally {
@@ -35,63 +49,15 @@ export default function SessionDetail() {
     })();
   }, [id]);
 
-  useEffect(() => {
-    if (loading || error || !session) return;
-    if (locations.length === 0) return;
-    if (!mapInstance.current && mapRef.current) {
-      mapInstance.current = L.map(mapRef.current, {
-        center: [locations[0].latitude, locations[0].longitude],
-        zoom: 14,
-      });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(mapInstance.current);
-    }
-
-    if (mapInstance.current) {
-      const latlngs = locations.map((l) => [l.latitude, l.longitude]);
-
-      // Polyline route
-      if (latlngs.length > 1) {
-        L.polyline(latlngs, { color: '#1e40af', weight: 3, opacity: 0.8 }).addTo(mapInstance.current);
-      }
-
-      // Check-in marker
-      if (latlngs.length > 0) {
-        L.marker(latlngs[0], {
-          icon: L.divIcon({ className: 'marker-checkin', iconSize: [28, 28], iconAnchor: [14, 28] }),
-        }).addTo(mapInstance.current).bindPopup('Check In');
-
-        // Check-out marker
-        if (latlngs.length > 1) {
-          L.marker(latlngs[latlngs.length - 1], {
-            icon: L.divIcon({ className: 'marker-checkout', iconSize: [28, 28], iconAnchor: [14, 28] }),
-          }).addTo(mapInstance.current).bindPopup('Check Out');
-        }
-
-        // Current position marker
-        L.marker(latlngs[latlngs.length - 1], {
-          icon: L.divIcon({ className: 'marker-current', iconSize: [20, 20], iconAnchor: [10, 10] }),
-        }).addTo(mapInstance.current);
-
-        // Fit bounds
-        const bounds = L.latLngBounds(latlngs);
-        mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
-      }
-    }
-
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
-    };
-  }, [loading, error, session, locations]);
-
   if (loading) return <LoadingSpinner className="py-20" />;
   if (error) return <ErrorState message={error} />;
   if (!session) return <ErrorState message="Session not found" />;
+
+  const hasMap = locations.some((l) => toLatLng(l))
+    || toLatLng(session.checkInLocation)
+    || toLatLng(session.checkOutLocation);
+
+  const lastPoint = locations.length > 0 ? locations[locations.length - 1] : null;
 
   return (
     <div className="space-y-6">
@@ -101,38 +67,37 @@ export default function SessionDetail() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Session Detail</h1>
-          <p className="text-sm text-gray-500">{session.id}</p>
+          <p className="text-sm text-gray-500">{entityId(session)}</p>
         </div>
       </div>
 
-      {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <div className="p-5">
             <User className="w-6 h-6 text-primary-700 mb-2" />
             <p className="text-sm text-gray-500">Employee</p>
-            <p className="text-lg font-semibold text-gray-900">{session.employeeName || '—'}</p>
+            <p className="text-lg font-semibold text-gray-900">{session.employee?.fullName || session.employeeName || '—'}</p>
           </div>
         </Card>
         <Card>
           <div className="p-5">
             <Clock className="w-6 h-6 text-emerald-600 mb-2" />
             <p className="text-sm text-gray-500">Check In</p>
-            <p className="text-lg font-semibold text-gray-900">{formatDateTime(session.checkInTime)}</p>
+            <p className="text-lg font-semibold text-gray-900">{formatDateTime(sessionCheckIn(session))}</p>
           </div>
         </Card>
         <Card>
           <div className="p-5">
             <Clock className="w-6 h-6 text-red-600 mb-2" />
             <p className="text-sm text-gray-500">Check Out</p>
-            <p className="text-lg font-semibold text-gray-900">{formatDateTime(session.checkOutTime)}</p>
+            <p className="text-lg font-semibold text-gray-900">{formatDateTime(sessionCheckOut(session))}</p>
           </div>
         </Card>
         <Card>
           <div className="p-5">
             <RouteIcon className="w-6 h-6 text-amber-600 mb-2" />
             <p className="text-sm text-gray-500">Distance</p>
-            <p className="text-lg font-semibold text-gray-900">{formatDistance(session.totalDistance)}</p>
+            <p className="text-lg font-semibold text-gray-900">{formatDistance(sessionDistanceMeters(session))}</p>
           </div>
         </Card>
       </div>
@@ -141,7 +106,7 @@ export default function SessionDetail() {
         <Card>
           <div className="p-5">
             <p className="text-sm text-gray-500">Duration</p>
-            <p className="text-lg font-semibold text-gray-900">{formatDuration(session.duration)}</p>
+            <p className="text-lg font-semibold text-gray-900">{formatDuration(sessionDurationSeconds(session))}</p>
           </div>
         </Card>
         <Card>
@@ -158,12 +123,45 @@ export default function SessionDetail() {
         </Card>
       </div>
 
-      {/* Map */}
-      <Card title="Route Map">
-        {locations.length === 0 ? (
-          <EmptyState icon={MapPin} title="No location data" message="No GPS points were recorded for this session." />
+      <Card title="Route Map & Exact Location">
+        {!hasMap ? (
+          <EmptyState
+            icon={MapPin}
+            title="No location data"
+            message="No GPS points or check-in/out coordinates were recorded for this session."
+          />
         ) : (
-          <div ref={mapRef} style={{ height: '450px', width: '100%' }} className="rounded-b-xl" />
+          <div>
+            <RouteMap
+              points={locations}
+              checkIn={session.checkInLocation}
+              checkOut={session.checkOutLocation}
+              height={450}
+              className="rounded-b-none"
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 border-t border-gray-100 bg-gray-50/80">
+              <ExactLocation point={session.checkInLocation} label="Check-in location" compact />
+              <ExactLocation
+                point={session.checkOutLocation || (session.status === 'active' ? lastPoint : null)}
+                label={session.checkOutLocation ? 'Check-out location' : 'Latest GPS point'}
+                compact
+              />
+              {lastPoint && session.checkOutLocation && (
+                <ExactLocation point={lastPoint} label="Last tracked point" compact />
+              )}
+            </div>
+            <div className="px-5 pb-4 flex flex-wrap gap-4 text-xs text-gray-500">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" /> Check in
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600" /> Check out
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-6 h-0.5 bg-primary-800" /> Route track
+              </span>
+            </div>
+          </div>
         )}
       </Card>
     </div>
