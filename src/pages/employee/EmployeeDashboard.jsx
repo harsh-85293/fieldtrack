@@ -382,19 +382,19 @@ export default function EmployeeDashboard() {
     : 'Check In';
 
   return (
-    <div className="space-y-4">
-      {/* Mobile greeting */}
-      <div className="md:hidden">
+    <div className="w-full min-w-0 space-y-4">
+      {/* Mobile / tablet greeting */}
+      <div className="lg:hidden">
         <p className="text-xs text-slate-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
         <h1 className="text-xl font-bold text-slate-900 mt-0.5">Hello, {firstName}</h1>
       </div>
 
-      {/* Attendance strip */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-stretch">
-          <div className="flex-1 p-4 sm:p-5 space-y-4">
+      {/* Attendance strip — stacks on phone, splits on tablet+ */}
+      <section className="w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-stretch">
+          <div className="flex-1 min-w-0 p-4 sm:p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Attendance</p>
                 <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                   {activeSession ? (
@@ -402,7 +402,7 @@ export default function EmployeeDashboard() {
                   ) : (
                     <Badge color="gray">Not Checked In</Badge>
                   )}
-                  <span className="text-xs text-slate-400 hidden md:inline">
+                  <span className="text-xs text-slate-400 hidden sm:inline">
                     {formatDate(new Date(), 'EEEE, MMM d, yyyy')}
                   </span>
                 </div>
@@ -413,7 +413,7 @@ export default function EmployeeDashboard() {
             </div>
 
             {activeSession && (
-              <div className="flex flex-wrap items-end gap-6">
+              <div className="flex flex-wrap items-end gap-4 sm:gap-6">
                 <div>
                   <p className="text-xs text-slate-500 mb-0.5">Session time</p>
                   <p className="text-2xl sm:text-3xl font-bold text-primary-800 tabular-nums leading-none">
@@ -424,7 +424,7 @@ export default function EmployeeDashboard() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 text-sm text-slate-600 pb-0.5">
-                  <Navigation className="w-4 h-4 text-slate-400" />
+                  <Navigation className="w-4 h-4 text-slate-400 shrink-0" />
                   {formatDistance(distance)} traveled
                 </div>
               </div>
@@ -445,7 +445,7 @@ export default function EmployeeDashboard() {
             </div>
           </div>
 
-          <div className="lg:w-64 xl:w-72 p-4 sm:p-5 lg:border-l border-t lg:border-t-0 border-slate-100 flex flex-col justify-center gap-3 bg-slate-50/60">
+          <div className="w-full md:w-56 lg:w-64 xl:w-72 shrink-0 p-4 sm:p-5 md:border-l border-t md:border-t-0 border-slate-100 flex flex-col justify-center gap-3 bg-slate-50/60">
             {activeSession ? (
               <button
                 type="button"
@@ -492,7 +492,7 @@ export default function EmployeeDashboard() {
       </section>
 
       {/* Sync bar */}
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="w-full flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex items-center gap-2.5 min-w-0">
           {syncStatus === 'synced' || queuedCount === 0 ? (
             <Wifi className="w-5 h-5 text-emerald-500 shrink-0" />
@@ -520,9 +520,9 @@ export default function EmployeeDashboard() {
         )}
       </div>
 
-      {/* Today's activity */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card title="Today's Sessions" className="min-h-[180px]">
+      {/* Today's activity — 1 col phone, 2 col from md up */}
+      <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card title="Today's Sessions" className="min-h-[160px] min-w-0">
           {todaySessions.length === 0 ? (
             <div className="py-8">
               <EmptyState title="No sessions today" />
@@ -532,7 +532,7 @@ export default function EmployeeDashboard() {
               {todaySessions.map((s) => (
                 <div key={s._id || s.id} className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-900">
+                    <p className="text-sm font-medium text-slate-900 truncate">
                       {formatTime(s.checkInAt || s.checkInTime)}
                       {' – '}
                       {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
@@ -548,7 +548,7 @@ export default function EmployeeDashboard() {
           )}
         </Card>
 
-        <Card title="Today's Visits" className="min-h-[180px]">
+        <Card title="Today's Visits" className="min-h-[160px] min-w-0">
           {todayVisits.length === 0 ? (
             <div className="py-8">
               <EmptyState title="No visits today" />
