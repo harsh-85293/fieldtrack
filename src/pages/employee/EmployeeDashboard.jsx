@@ -368,166 +368,178 @@ export default function EmployeeDashboard() {
   if (error) return <ErrorState message={error} onRetry={loadData} />;
 
   const gpsInfo = {
-    idle: { label: 'GPS Off', color: 'gray', icon: MapPin },
-    acquiring: { label: 'Getting GPS...', color: 'amber', icon: RefreshCw },
-    success: { label: 'GPS Active', color: 'green', icon: MapPin },
-    denied: { label: 'GPS Denied', color: 'red', icon: MapPin },
-    unavailable: { label: 'GPS Unavailable', color: 'gray', icon: MapPin },
-    error: { label: 'GPS Error', color: 'red', icon: MapPin },
+    idle: { label: 'GPS Off', iconClass: 'text-slate-400', icon: MapPin },
+    acquiring: { label: 'Getting GPS...', iconClass: 'text-amber-500', icon: RefreshCw },
+    success: { label: 'GPS Active', iconClass: 'text-emerald-500', icon: MapPin },
+    denied: { label: 'GPS Denied', iconClass: 'text-red-500', icon: MapPin },
+    unavailable: { label: 'GPS Unavailable', iconClass: 'text-slate-400', icon: MapPin },
+    error: { label: 'GPS Error', iconClass: 'text-red-500', icon: MapPin },
   };
   const gps = gpsInfo[gpsStatus] || gpsInfo.idle;
+  const firstName = (user?.fullName || user?.name || '').split(' ')[0] || 'there';
+  const checkInLabel = todaySessions.some((s) => s.status === 'completed' || s.status === 'COMPLETED')
+    ? 'Start New Session'
+    : 'Check In';
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      {/* Date and greeting — mobile only (desktop header already greets) */}
-      <div className="text-center pt-1 md:hidden">
-        <p className="text-sm text-gray-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
-        <h1 className="text-xl font-bold text-gray-900 mt-1">Hello, {(user?.fullName || user?.name || '').split(' ')[0] || 'there'}</h1>
+    <div className="space-y-4">
+      {/* Mobile greeting */}
+      <div className="md:hidden">
+        <p className="text-xs text-slate-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
+        <h1 className="text-xl font-bold text-slate-900 mt-0.5">Hello, {firstName}</h1>
       </div>
 
-      <div className="hidden md:block">
-        <p className="text-sm text-gray-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
-      </div>
-
-      {/* Attendance status */}
-      <Card>
-        <div className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm text-gray-500">Attendance Status</p>
-              <div className="mt-1">
-                {activeSession ? (
-                  <Badge color="green">Checked In</Badge>
-                ) : (
-                  <Badge color="gray">Not Checked In</Badge>
-                )}
+      {/* Attendance strip */}
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-stretch">
+          <div className="flex-1 p-4 sm:p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Attendance</p>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  {activeSession ? (
+                    <Badge color="green">Checked In</Badge>
+                  ) : (
+                    <Badge color="gray">Not Checked In</Badge>
+                  )}
+                  <span className="text-xs text-slate-400 hidden md:inline">
+                    {formatDate(new Date(), 'EEEE, MMM d, yyyy')}
+                  </span>
+                </div>
               </div>
+              <gps.icon
+                className={`w-7 h-7 shrink-0 ${gps.iconClass} ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`}
+              />
             </div>
-            <gps.icon className={`w-8 h-8 text-${gps.color === 'green' ? 'emerald' : gps.color === 'amber' ? 'amber' : gps.color === 'red' ? 'red' : 'gray'}-500 ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`} />
-          </div>
 
-          {/* Timer */}
-          {activeSession && (
-            <div className="text-center mb-4">
-              <p className="text-3xl font-bold text-primary-800 tabular-nums">
-                {formatDuration(elapsed)}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Since {formatTime(activeSession.checkInAt || activeSession.checkInTime)}
-              </p>
-            </div>
-          )}
-
-          {/* Distance */}
-          {activeSession && (
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Navigation className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-600">{formatDistance(distance)} traveled</span>
-            </div>
-          )}
-
-          {/* GPS Status */}
-          <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2">
-              <gps.icon className={`w-5 h-5 text-${gps.color === 'green' ? 'emerald' : gps.color === 'amber' ? 'amber' : gps.color === 'red' ? 'red' : 'gray'}-500 ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`} />
-              <span className="text-sm font-medium text-gray-700">{gps.label}</span>
-            </div>
-            {currentPosition && (
-              <span className="text-xs text-gray-400">
-                ±{Math.round(currentPosition.accuracy || 0)}m
-              </span>
+            {activeSession && (
+              <div className="flex flex-wrap items-end gap-6">
+                <div>
+                  <p className="text-xs text-slate-500 mb-0.5">Session time</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-primary-800 tabular-nums leading-none">
+                    {formatDuration(elapsed)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Since {formatTime(activeSession.checkInAt || activeSession.checkInTime)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm text-slate-600 pb-0.5">
+                  <Navigation className="w-4 h-4 text-slate-400" />
+                  {formatDistance(distance)} traveled
+                </div>
+              </div>
             )}
+
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <gps.icon
+                  className={`w-4 h-4 shrink-0 ${gps.iconClass} ${gpsStatus === 'acquiring' ? 'animate-spin' : ''}`}
+                />
+                <span className="text-sm font-medium text-slate-700 truncate">{gps.label}</span>
+              </div>
+              {currentPosition && (
+                <span className="text-xs text-slate-400 shrink-0">
+                  ±{Math.round(currentPosition.accuracy || 0)}m
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Check In/Out button */}
-          {activeSession ? (
-            <button
-              onClick={handleCheckOut}
-              disabled={submittingRef.current}
-              className="w-full sm:max-w-sm sm:mx-auto py-4 bg-red-600 text-white text-lg font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-            >
-              <LogOut className="w-6 h-6" />
-              Check Out
-            </button>
-          ) : (
-            <button
-              onClick={handleCheckIn}
-              disabled={submittingRef.current || gpsStatus === 'denied' || gpsStatus === 'unavailable'}
-              className="w-full sm:max-w-sm sm:mx-auto py-4 bg-emerald-600 text-white text-lg font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-6 h-6" />
-              {todaySessions.some((s) => s.status === 'completed' || s.status === 'COMPLETED')
-                ? 'Start New Session'
-                : 'Check In'}
-            </button>
-          )}
-        </div>
-      </Card>
-
-      {/* Sync + actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="flex items-center gap-2">
-            {syncStatus === 'synced' || queuedCount === 0 ? (
-              <Wifi className="w-5 h-5 text-emerald-500" />
-            ) : syncStatus === 'syncing' ? (
-              <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />
-            ) : syncStatus === 'error' ? (
-              <WifiOff className="w-5 h-5 text-red-500" />
+          <div className="lg:w-64 xl:w-72 p-4 sm:p-5 lg:border-l border-t lg:border-t-0 border-slate-100 flex flex-col justify-center gap-3 bg-slate-50/60">
+            {activeSession ? (
+              <button
+                type="button"
+                onClick={handleCheckOut}
+                disabled={submittingRef.current}
+                className="w-full py-3.5 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Check Out
+              </button>
             ) : (
-              <Wifi className="w-5 h-5 text-gray-400" />
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={submittingRef.current || gpsStatus === 'denied' || gpsStatus === 'unavailable'}
+                className="w-full py-3.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-5 h-5" />
+                {checkInLabel}
+              </button>
             )}
-            <div>
-              <p className="text-sm font-medium text-gray-700">
-                {queuedCount > 0 ? `${queuedCount} items queued` : 'All data synced'}
-              </p>
-              <p className="text-xs text-gray-500">
-                {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync failed' : 'Up to date'}
-              </p>
-            </div>
-          </div>
-          {queuedCount > 0 && (
-            <Button size="sm" variant="outline" onClick={handleSync}>
-              <RefreshCw className="w-4 h-4" />
-              Sync
-            </Button>
-          )}
-        </div>
 
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => navigate('/app/visits/new')}
-            className="w-full py-3 bg-primary-700 text-white font-medium rounded-xl hover:bg-primary-800 transition-colors flex items-center justify-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Add Visit
-          </button>
-          {activeSession && (
             <button
-              onClick={() => navigate('/app/map')}
-              className="w-full py-3 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors flex items-center justify-center gap-2"
+              type="button"
+              onClick={() => navigate('/app/visits/new')}
+              className="w-full py-3 bg-primary-700 text-white font-medium rounded-xl hover:bg-primary-800 transition-colors flex items-center justify-center gap-2"
             >
-              <MapPin className="w-5 h-5" />
-              View Live Map
+              <Plus className="w-5 h-5" />
+              Add Visit
             </button>
-          )}
+
+            {activeSession && (
+              <button
+                type="button"
+                onClick={() => navigate('/app/map')}
+                className="w-full py-2.5 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors flex items-center justify-center gap-2"
+              >
+                <MapPin className="w-4 h-4" />
+                Live Map
+              </button>
+            )}
+          </div>
         </div>
+      </section>
+
+      {/* Sync bar */}
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {syncStatus === 'synced' || queuedCount === 0 ? (
+            <Wifi className="w-5 h-5 text-emerald-500 shrink-0" />
+          ) : syncStatus === 'syncing' ? (
+            <RefreshCw className="w-5 h-5 text-amber-500 animate-spin shrink-0" />
+          ) : syncStatus === 'error' ? (
+            <WifiOff className="w-5 h-5 text-red-500 shrink-0" />
+          ) : (
+            <Wifi className="w-5 h-5 text-slate-400 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800 truncate">
+              {queuedCount > 0 ? `${queuedCount} items queued` : 'All data synced'}
+            </p>
+            <p className="text-xs text-slate-500">
+              {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync failed' : 'Up to date'}
+            </p>
+          </div>
+        </div>
+        {queuedCount > 0 && (
+          <Button size="sm" variant="outline" onClick={handleSync}>
+            <RefreshCw className="w-4 h-4" />
+            Sync
+          </Button>
+        )}
       </div>
 
-      {/* Today's sessions + visits */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <Card title="Today's Sessions">
+      {/* Today's activity */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Card title="Today's Sessions" className="min-h-[180px]">
           {todaySessions.length === 0 ? (
-            <EmptyState title="No sessions today" />
+            <div className="py-8">
+              <EmptyState title="No sessions today" />
+            </div>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-slate-100">
               {todaySessions.map((s) => (
-                <div key={s._id || s.id} className="px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {formatTime(s.checkInAt || s.checkInTime)} - {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
+                <div key={s._id || s.id} className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900">
+                      {formatTime(s.checkInAt || s.checkInTime)}
+                      {' – '}
+                      {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
                     </p>
-                    <p className="text-xs text-gray-500">{formatDuration(s.totalDurationMs ? Math.floor(s.totalDurationMs / 1000) : (s.duration || 0))}</p>
+                    <p className="text-xs text-slate-500">
+                      {formatDuration(s.totalDurationMs ? Math.floor(s.totalDurationMs / 1000) : (s.duration || 0))}
+                    </p>
                   </div>
                   <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
                 </div>
@@ -536,25 +548,32 @@ export default function EmployeeDashboard() {
           )}
         </Card>
 
-        <Card title="Today's Visits">
+        <Card title="Today's Visits" className="min-h-[180px]">
           {todayVisits.length === 0 ? (
-            <EmptyState title="No visits today" />
+            <div className="py-8">
+              <EmptyState title="No visits today" />
+            </div>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-slate-100">
               {todayVisits.map((v) => (
-                <div
+                <button
+                  type="button"
                   key={v._id || v.id}
                   onClick={() => navigate(`/app/visits/${v._id || v.id}`)}
-                  className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                  className="w-full text-left px-4 sm:px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
                 >
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
-                    <p className="text-xs text-gray-500">{formatDateTime(v.visitDate || v.visitTime)}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">
+                      {v.store?.name || v.storeName || '—'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {formatDateTime(v.visitDate || v.visitTime)}
+                    </p>
                   </div>
-                  <span className="text-sm font-semibold text-primary-700">
+                  <span className="text-sm font-semibold text-primary-700 shrink-0">
                     {v.totalQuantity || v.itemCount || v.items?.length || 0} items
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           )}
