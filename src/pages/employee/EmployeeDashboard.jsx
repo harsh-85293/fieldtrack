@@ -378,11 +378,15 @@ export default function EmployeeDashboard() {
   const gps = gpsInfo[gpsStatus] || gpsInfo.idle;
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Date and greeting */}
-      <div className="text-center pt-2">
+    <div className="space-y-4 md:space-y-6">
+      {/* Date and greeting — mobile only (desktop header already greets) */}
+      <div className="text-center pt-1 md:hidden">
         <p className="text-sm text-gray-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
         <h1 className="text-xl font-bold text-gray-900 mt-1">Hello, {(user?.fullName || user?.name || '').split(' ')[0] || 'there'}</h1>
+      </div>
+
+      <div className="hidden md:block">
+        <p className="text-sm text-gray-500">{formatDate(new Date(), 'EEEE, MMM d, yyyy')}</p>
       </div>
 
       {/* Attendance status */}
@@ -440,7 +444,7 @@ export default function EmployeeDashboard() {
             <button
               onClick={handleCheckOut}
               disabled={submittingRef.current}
-              className="w-full py-4 bg-red-600 text-white text-lg font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full sm:max-w-sm sm:mx-auto py-4 bg-red-600 text-white text-lg font-bold rounded-xl hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               <LogOut className="w-6 h-6" />
               Check Out
@@ -449,7 +453,7 @@ export default function EmployeeDashboard() {
             <button
               onClick={handleCheckIn}
               disabled={submittingRef.current || gpsStatus === 'denied' || gpsStatus === 'unavailable'}
-              className="w-full py-4 bg-emerald-600 text-white text-lg font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full sm:max-w-sm sm:mx-auto py-4 bg-emerald-600 text-white text-lg font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               <LogIn className="w-6 h-6" />
               {todaySessions.some((s) => s.status === 'completed' || s.status === 'COMPLETED')
@@ -460,100 +464,102 @@ export default function EmployeeDashboard() {
         </div>
       </Card>
 
-      {/* Sync status */}
-      <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div className="flex items-center gap-2">
-          {syncStatus === 'synced' || queuedCount === 0 ? (
-            <Wifi className="w-5 h-5 text-emerald-500" />
-          ) : syncStatus === 'syncing' ? (
-            <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />
-          ) : syncStatus === 'error' ? (
-            <WifiOff className="w-5 h-5 text-red-500" />
-          ) : (
-            <Wifi className="w-5 h-5 text-gray-400" />
-          )}
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              {queuedCount > 0 ? `${queuedCount} items queued` : 'All data synced'}
-            </p>
-            <p className="text-xs text-gray-500">
-              {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync failed' : 'Up to date'}
-            </p>
+      {/* Sync + actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div className="flex items-center gap-2">
+            {syncStatus === 'synced' || queuedCount === 0 ? (
+              <Wifi className="w-5 h-5 text-emerald-500" />
+            ) : syncStatus === 'syncing' ? (
+              <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />
+            ) : syncStatus === 'error' ? (
+              <WifiOff className="w-5 h-5 text-red-500" />
+            ) : (
+              <Wifi className="w-5 h-5 text-gray-400" />
+            )}
+            <div>
+              <p className="text-sm font-medium text-gray-700">
+                {queuedCount > 0 ? `${queuedCount} items queued` : 'All data synced'}
+              </p>
+              <p className="text-xs text-gray-500">
+                {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'error' ? 'Sync failed' : 'Up to date'}
+              </p>
+            </div>
           </div>
+          {queuedCount > 0 && (
+            <Button size="sm" variant="outline" onClick={handleSync}>
+              <RefreshCw className="w-4 h-4" />
+              Sync
+            </Button>
+          )}
         </div>
-        {queuedCount > 0 && (
-          <Button size="sm" variant="outline" onClick={handleSync}>
-            <RefreshCw className="w-4 h-4" />
-            Sync
-          </Button>
-        )}
+
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => navigate('/app/visits/new')}
+            className="w-full py-3 bg-primary-700 text-white font-medium rounded-xl hover:bg-primary-800 transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Add Visit
+          </button>
+          {activeSession && (
+            <button
+              onClick={() => navigate('/app/map')}
+              className="w-full py-3 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <MapPin className="w-5 h-5" />
+              View Live Map
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Add Visit */}
-      <button
-        onClick={() => navigate('/app/visits/new')}
-        className="w-full py-3 bg-primary-700 text-white font-medium rounded-xl hover:bg-primary-800 transition-colors flex items-center justify-center gap-2"
-      >
-        <Plus className="w-5 h-5" />
-        Add Visit
-      </button>
-
-      {/* View map */}
-      {activeSession && (
-        <button
-          onClick={() => navigate('/app/map')}
-          className="w-full py-3 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors flex items-center justify-center gap-2"
-        >
-          <MapPin className="w-5 h-5" />
-          View Live Map
-        </button>
-      )}
-
-      {/* Today's sessions */}
-      <Card title="Today's Sessions">
-        {todaySessions.length === 0 ? (
-          <EmptyState title="No sessions today" />
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {todaySessions.map((s) => (
-              <div key={s._id || s.id} className="px-6 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {formatTime(s.checkInAt || s.checkInTime)} - {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
-                  </p>
-                  <p className="text-xs text-gray-500">{formatDuration(s.totalDurationMs ? Math.floor(s.totalDurationMs / 1000) : (s.duration || 0))}</p>
+      {/* Today's sessions + visits */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <Card title="Today's Sessions">
+          {todaySessions.length === 0 ? (
+            <EmptyState title="No sessions today" />
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {todaySessions.map((s) => (
+                <div key={s._id || s.id} className="px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {formatTime(s.checkInAt || s.checkInTime)} - {(s.checkOutAt || s.checkOutTime) ? formatTime(s.checkOutAt || s.checkOutTime) : 'Active'}
+                    </p>
+                    <p className="text-xs text-gray-500">{formatDuration(s.totalDurationMs ? Math.floor(s.totalDurationMs / 1000) : (s.duration || 0))}</p>
+                  </div>
+                  <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
                 </div>
-                <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+              ))}
+            </div>
+          )}
+        </Card>
 
-      {/* Today's visits */}
-      <Card title="Today's Visits">
-        {todayVisits.length === 0 ? (
-          <EmptyState title="No visits today" />
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {todayVisits.map((v) => (
-              <div
-                key={v._id || v.id}
-                onClick={() => navigate(`/app/visits/${v._id || v.id}`)}
-                className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
-                  <p className="text-xs text-gray-500">{formatDateTime(v.visitDate || v.visitTime)}</p>
+        <Card title="Today's Visits">
+          {todayVisits.length === 0 ? (
+            <EmptyState title="No visits today" />
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {todayVisits.map((v) => (
+                <div
+                  key={v._id || v.id}
+                  onClick={() => navigate(`/app/visits/${v._id || v.id}`)}
+                  className="px-6 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{v.store?.name || v.storeName || '—'}</p>
+                    <p className="text-xs text-gray-500">{formatDateTime(v.visitDate || v.visitTime)}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-primary-700">
+                    {v.totalQuantity || v.itemCount || v.items?.length || 0} items
+                  </span>
                 </div>
-                <span className="text-sm font-semibold text-primary-700">
-                  {v.totalQuantity || v.itemCount || v.items?.length || 0} items
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

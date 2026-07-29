@@ -60,7 +60,7 @@ export default function EmployeeProfile() {
   if (loading) return <LoadingSpinner className="py-20" />;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 max-w-2xl">
       <h1 className="text-xl font-bold text-gray-900">My Profile</h1>
 
       {/* Profile header */}
