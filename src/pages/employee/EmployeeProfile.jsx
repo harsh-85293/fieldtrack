@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { User, Mail, Phone, MapPin, Save, Lock } from 'lucide-react';
+import { Save, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { employeeService } from '../../api/services.js';
 import {
   Button, Input, Card, LoadingSpinner,
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
+import { entityId } from '../../utils/format.js';
 
 export default function EmployeeProfile() {
   const { user, loadUser } = useAuth();
@@ -23,10 +24,13 @@ export default function EmployeeProfile() {
     formState: { errors },
   } = useForm();
 
+  const displayName = user?.fullName || user?.name || '';
+  const userId = entityId(user);
+
   useEffect(() => {
     if (user) {
       reset({
-        name: user.name || '',
+        name: displayName,
         email: user.email || '',
         phone: user.phone || '',
         address: user.address || '',
@@ -36,12 +40,12 @@ export default function EmployeeProfile() {
       });
       setLoading(false);
     }
-  }, [user, reset]);
+  }, [user, reset, displayName]);
 
   const onSubmit = async (data) => {
     setSaving(true);
     try {
-      await employeeService.update(user.id, {
+      await employeeService.update(userId, {
         phone: data.phone,
         address: data.address,
         city: data.city,
@@ -60,62 +64,65 @@ export default function EmployeeProfile() {
   if (loading) return <LoadingSpinner className="py-20" />;
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <h1 className="text-xl font-bold text-gray-900">My Profile</h1>
+    <div className="w-full min-w-0 space-y-4 sm:space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">My Profile</h1>
+        <button
+          type="button"
+          onClick={() => navigate('/app/change-password')}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors text-sm"
+        >
+          <Lock className="w-4 h-4" />
+          Change Password
+        </button>
+      </div>
 
-      {/* Profile header */}
-      <Card>
-        <div className="p-5 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-2xl font-bold">
-            {user?.name?.charAt(0)?.toUpperCase()}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)] gap-4 sm:gap-5">
+        {/* Identity card */}
+        <Card className="h-fit">
+          <div className="p-5 sm:p-6 flex xl:flex-col items-center xl:items-start gap-4">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-2xl sm:text-3xl font-bold shrink-0">
+              {displayName.charAt(0)?.toUpperCase() || 'E'}
+            </div>
+            <div className="min-w-0 text-left">
+              <p className="text-lg font-semibold text-slate-900 truncate">{displayName || 'Employee'}</p>
+              <p className="text-sm text-slate-500 mt-0.5">{user?.employeeId || '—'}</p>
+              <p className="text-sm text-slate-500 truncate mt-1">{user?.email}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-lg font-semibold text-gray-900">{user?.name}</p>
-            <p className="text-sm text-gray-500">{user?.employeeId || '—'}</p>
-          </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* Edit form */}
-      <Card title="Edit Information">
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <User className="w-5 h-5 text-gray-400" />
-            <Input label="Full Name" disabled defaultValue={user?.name || ''} {...register('name')} />
-          </div>
-          <div className="flex items-center gap-3">
-            <Mail className="w-5 h-5 text-gray-400" />
-            <Input label="Email" disabled defaultValue={user?.email || ''} {...register('email')} />
-          </div>
-          <div className="flex items-center gap-3">
-            <Phone className="w-5 h-5 text-gray-400" />
-            <Input label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
-          </div>
-          <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-gray-400" />
+        {/* Edit form */}
+        <Card title="Edit Information">
+          <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Full Name" disabled {...register('name')} />
+              <Input label="Email" disabled {...register('email')} />
+              <Input
+                label="Phone"
+                type="tel"
+                error={errors.phone?.message}
+                {...register('phone')}
+              />
+              <Input label="Postal Code" {...register('postalCode')} />
+            </div>
+
             <Input label="Address" {...register('address')} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="City" {...register('city')} />
-            <Input label="State" {...register('state')} />
-          </div>
-          <Input label="Postal Code" {...register('postalCode')} />
 
-          <Button type="submit" className="w-full" loading={saving}>
-            <Save className="w-4 h-4" />
-            Save Changes
-          </Button>
-        </form>
-      </Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="City" {...register('city')} />
+              <Input label="State" {...register('state')} />
+            </div>
 
-      {/* Change password link */}
-      <button
-        onClick={() => navigate('/app/change-password')}
-        className="w-full py-3 bg-white text-primary-700 border border-primary-200 font-medium rounded-xl hover:bg-primary-50 transition-colors flex items-center justify-center gap-2"
-      >
-        <Lock className="w-5 h-5" />
-        Change Password
-      </button>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
+              <Button type="submit" className="w-full sm:w-auto sm:min-w-[160px]" loading={saving}>
+                <Save className="w-4 h-4" />
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
     </div>
   );
 }

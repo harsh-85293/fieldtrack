@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { ArrowLeft, Lock, Save } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext.jsx';
+import { ArrowLeft, Save } from 'lucide-react';
 import { authService } from '../../api/services.js';
 import { Button, Input, Card } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 
 export default function ChangePassword() {
-  const { user } = useAuth();
   const { toastSuccess, toastError } = useToast();
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
@@ -45,25 +43,27 @@ export default function ChangePassword() {
   };
 
   return (
-    <div className="space-y-4 max-w-md">
+    <div className="w-full min-w-0 space-y-4 sm:space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/app/profile')} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
+        <button
+          type="button"
+          onClick={() => navigate('/app/profile')}
+          className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg shrink-0"
+          aria-label="Back to profile"
+        >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">Change Password</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Change Password</h1>
       </div>
 
-      <Card>
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <Lock className="w-5 h-5 text-gray-400" />
-            <Input
-              label="Current Password"
-              type="password"
-              error={errors.currentPassword?.message}
-              {...register('currentPassword', { required: 'Current password is required' })}
-            />
-          </div>
+      <Card className="w-full max-w-xl">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-4">
+          <Input
+            label="Current Password"
+            type="password"
+            error={errors.currentPassword?.message}
+            {...register('currentPassword', { required: 'Current password is required' })}
+          />
           <Input
             label="New Password"
             type="password"
@@ -83,10 +83,12 @@ export default function ChangePassword() {
             })}
           />
 
-          <Button type="submit" className="w-full" loading={saving}>
-            <Save className="w-4 h-4" />
-            Change Password
-          </Button>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-2">
+            <Button type="submit" className="w-full sm:w-auto sm:min-w-[180px]" loading={saving}>
+              <Save className="w-4 h-4" />
+              Change Password
+            </Button>
+          </div>
         </form>
       </Card>
     </div>
