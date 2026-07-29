@@ -1,30 +1,48 @@
 import React, { useState, useEffect, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Save, Lock, Mail, BadgeCheck, Phone, MapPin } from 'lucide-react';
+import {
+  Save, Lock, Mail, BadgeCheck, Phone, Building2, Briefcase, CircleDot,
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { employeeService } from '../../api/services.js';
 import {
   Button, Input, LoadingSpinner,
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
-import { entityId } from '../../utils/format.js';
+
+const INPUT_CLASS =
+  'h-11 py-2.5 rounded-lg border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 
 function ReadOnlyField({ label, value }) {
   const id = useId();
   return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-medium text-slate-700 mb-1">
+    <div className="min-w-0">
+      <label htmlFor={id} className="block text-sm font-medium text-slate-700 mb-1.5">
         {label}
       </label>
       <div
         id={id}
-        className="w-full min-h-[42px] px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium text-slate-700"
+        className="relative w-full h-11 px-3 pr-9 flex items-center rounded-lg border border-slate-200 bg-slate-100 text-sm font-medium text-slate-600"
         aria-readonly="true"
       >
-        {value || '—'}
+        <span className="truncate">{value || '—'}</span>
+        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
       </div>
-      <p className="mt-1 text-[11px] text-slate-400">Read-only</p>
+    </div>
+  );
+}
+
+function MetaRow({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5">
+      <div className="mt-0.5 w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-sm font-semibold text-slate-900 break-words mt-0.5">{value || '—'}</p>
+      </div>
     </div>
   );
 }
@@ -33,6 +51,7 @@ export default function EmployeeProfile() {
   const { user, loadUser } = useAuth();
   const { toastSuccess, toastError } = useToast();
   const navigate = useNavigate();
+  const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -43,35 +62,53 @@ export default function EmployeeProfile() {
     formState: { errors },
   } = useForm();
 
-  const displayName = user?.fullName || user?.name || '';
-  const userId = entityId(user);
-  const roleLabel = user?.role
-    ? String(user.role).charAt(0).toUpperCase() + String(user.role).slice(1).toLowerCase()
-    : 'Employee';
+  const displayName = profileData?.fullName || profileData?.name || user?.fullName || user?.name || '';
+  const profile = profileData?.profile || {};
+  const roleLabel = (profileData?.role || user?.role || 'employee')
+    .toString()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const isActive = profileData?.isActive !== false && user?.isActive !== false;
 
   useEffect(() => {
-    if (user) {
-      reset({
-        phone: user.phone || '',
-        address: user.address || '',
-        city: user.city || '',
-        state: user.state || '',
-        postalCode: user.postalCode || '',
-      });
-      setLoading(false);
-    }
-  }, [user, reset]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await employeeService.getMyProfile();
+        const data = res.data?.data || res.data;
+        if (cancelled) return;
+        setProfileData(data);
+        const p = data?.profile || {};
+        reset({
+          phone: data?.phone || '',
+          address: p.address || data?.address || '',
+          city: p.city || data?.city || '',
+          state: p.state || data?.state || '',
+          postalCode: p.postalCode || data?.postalCode || '',
+        });
+      } catch (err) {
+        if (!cancelled) {
+          toastError(err.response?.data?.message || 'Failed to load profile');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [reset]);
 
   const onSubmit = async (data) => {
     setSaving(true);
     try {
-      await employeeService.update(userId, {
+      const res = await employeeService.updateMyProfile({
         phone: data.phone,
         address: data.address,
         city: data.city,
         state: data.state,
         postalCode: data.postalCode,
       });
+      const updated = res.data?.data || res.data;
+      setProfileData(updated);
       toastSuccess('Profile updated successfully');
       loadUser();
     } catch (err) {
@@ -83,186 +120,138 @@ export default function EmployeeProfile() {
 
   if (loading) return <LoadingSpinner className="py-20" />;
 
-  const inputClass =
-    'h-[42px] rounded-lg border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500';
-
   return (
-    <div className="w-full min-w-0 max-w-[1200px] mx-auto">
-      <div className="mb-4 sm:mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">My Profile</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            View your account details and update contact information.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate('/app/change-password')}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-primary-700 text-sm font-medium border border-primary-200 shadow-sm hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors sm:hidden"
-        >
-          <Lock className="w-4 h-4" />
-          Change Password
-        </button>
+    <div className="w-full min-w-0 max-w-[1480px] mx-auto">
+      {/* Mobile-only title (desktop uses layout header) */}
+      <div className="lg:hidden mb-4">
+        <h1 className="text-xl font-bold text-slate-900">My Profile</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Manage your profile information</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4 sm:gap-5 items-start">
-        {/* Left: profile summary */}
-        <aside className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden lg:sticky lg:top-20">
-          <div className="bg-primary-900 px-5 py-5 sm:px-6 sm:py-6">
-            <div className="flex items-start gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,35%)_minmax(0,65%)] gap-5 items-stretch">
+        {/* Left summary */}
+        <aside className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="bg-primary-900 px-5 py-5">
+            <div className="flex items-center gap-3.5">
               <div
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary-700 text-white flex items-center justify-center text-2xl font-bold shrink-0 ring-2 ring-white/20"
+                className="w-14 h-14 rounded-2xl bg-primary-700 text-white flex items-center justify-center text-2xl font-bold shrink-0 ring-2 ring-white/20"
                 aria-hidden="true"
               >
                 {displayName.charAt(0)?.toUpperCase() || 'E'}
               </div>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold text-white truncate">
-                    {displayName || 'Employee'}
-                  </h2>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-white leading-tight truncate">
+                  {displayName || 'Employee'}
+                </h2>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/15 text-white">
                     {roleLabel}
                   </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-400/20 text-emerald-100">
+                    {isActive ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-                <p className="text-sm text-primary-200 mt-1 truncate">
-                  {user?.employeeId || 'No employee ID'}
+                <p className="text-sm text-primary-200 mt-1.5 truncate">
+                  {profileData?.employeeId || user?.employeeId || 'No employee ID'}
                 </p>
               </div>
             </div>
+          </div>
 
+          <div className="flex-1 px-5 py-2 divide-y divide-slate-100">
+            <MetaRow icon={BadgeCheck} label="Employee ID" value={profileData?.employeeId || user?.employeeId} />
+            <MetaRow icon={Mail} label="Email" value={profileData?.email || user?.email} />
+            <MetaRow icon={Phone} label="Phone" value={profileData?.phone || user?.phone || 'Not set'} />
+            <MetaRow icon={Briefcase} label="Designation" value={profile.designation} />
+            <MetaRow icon={Building2} label="Department" value={profile.department} />
+            <MetaRow icon={CircleDot} label="Status" value={isActive ? 'Active' : 'Inactive'} />
+          </div>
+
+          <div className="p-4 border-t border-slate-100 mt-auto">
             <button
               type="button"
               onClick={() => navigate('/app/change-password')}
-              className="hidden sm:inline-flex mt-5 w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 text-white text-sm font-medium border border-white/15 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium border border-primary-100 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors"
             >
               <Lock className="w-4 h-4" />
               Change Password
             </button>
           </div>
-
-          <div className="p-5 sm:p-6 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
-                <BadgeCheck className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-500">Employee ID</p>
-                <p className="text-sm font-semibold text-slate-900 truncate">
-                  {user?.employeeId || '—'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
-                <Mail className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-500">Email</p>
-                <p className="text-sm font-semibold text-slate-900 break-all">
-                  {user?.email || '—'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
-                <Phone className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-500">Phone</p>
-                <p className="text-sm font-semibold text-slate-900 truncate">
-                  {user?.phone || 'Not set'}
-                </p>
-              </div>
-            </div>
-
-            {(user?.city || user?.state || user?.address) && (
-              <div className="flex items-start gap-3 pt-1 border-t border-slate-100">
-                <div className="mt-0.5 w-8 h-8 rounded-lg bg-primary-50 text-primary-700 flex items-center justify-center shrink-0">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-500">Location</p>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {[user?.city, user?.state].filter(Boolean).join(', ') || user?.address || '—'}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
         </aside>
 
-        {/* Right: editable form */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-0">
-          <div className="px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Contact & address</h2>
+        {/* Right form */}
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-0 flex flex-col h-full">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col h-full" noValidate>
+            <div className="px-6 sm:px-7 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-900">Contact information</h2>
               <p className="text-sm text-slate-500 mt-0.5">
                 Name and email are managed by your admin.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/app/change-password')}
-              className="hidden lg:inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-primary-700 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 border border-transparent hover:border-primary-100 transition-colors shrink-0"
-            >
-              <Lock className="w-4 h-4" />
-              Change Password
-            </button>
-          </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-6 lg:p-7" noValidate>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
-              <ReadOnlyField label="Full name" value={displayName} />
-              <ReadOnlyField label="Email" value={user?.email} />
-
-              <Input
-                label="Phone"
-                type="tel"
-                autoComplete="tel"
-                error={errors.phone?.message}
-                className={inputClass}
-                {...register('phone')}
-              />
-              <Input
-                label="Postal code"
-                autoComplete="postal-code"
-                className={inputClass}
-                {...register('postalCode')}
-              />
-
-              <div className="md:col-span-2">
-                <Input
-                  label="Address"
-                  autoComplete="street-address"
-                  className={inputClass}
-                  {...register('address')}
-                />
+            <div className="flex-1 px-6 sm:px-7 py-5 space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Account</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+                  <ReadOnlyField label="Full name" value={displayName} />
+                  <ReadOnlyField label="Email" value={profileData?.email || user?.email} />
+                </div>
               </div>
 
-              <Input
-                label="City"
-                autoComplete="address-level2"
-                className={inputClass}
-                {...register('city')}
-              />
-              <Input
-                label="State"
-                autoComplete="address-level1"
-                className={inputClass}
-                {...register('state')}
-              />
+              <div className="border-t border-slate-100 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Contact</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+                  <Input
+                    label="Phone"
+                    type="tel"
+                    autoComplete="tel"
+                    error={errors.phone?.message}
+                    className={INPUT_CLASS}
+                    {...register('phone')}
+                  />
+                  <Input
+                    label="Postal code"
+                    autoComplete="postal-code"
+                    className={INPUT_CLASS}
+                    {...register('postalCode')}
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Address</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+                  <div className="md:col-span-2">
+                    <Input
+                      label="Address"
+                      autoComplete="street-address"
+                      className={INPUT_CLASS}
+                      {...register('address')}
+                    />
+                  </div>
+                  <Input
+                    label="City"
+                    autoComplete="address-level2"
+                    className={INPUT_CLASS}
+                    {...register('city')}
+                  />
+                  <Input
+                    label="State"
+                    autoComplete="address-level1"
+                    className={INPUT_CLASS}
+                    {...register('state')}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-xs text-slate-400 text-center sm:text-left">
+            <div className="mt-auto px-6 sm:px-7 py-4 border-t border-slate-200 bg-slate-50/80 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-slate-500 text-center sm:text-left">
                 Changes apply to your field profile immediately.
               </p>
               <Button
                 type="submit"
-                className="w-full sm:w-auto sm:min-w-[168px] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500"
+                className="w-full sm:w-auto sm:min-w-[160px]"
                 loading={saving}
               >
                 <Save className="w-4 h-4" />
