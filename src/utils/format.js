@@ -57,8 +57,9 @@ export function formatDistance(meters) {
 
 /** Mongo docs expose `_id`; some clients use `id`. */
 export function entityId(doc) {
-  if (!doc) return null;
-  return doc._id || doc.id || null;
+  if (!doc) return '';
+  const id = doc._id ?? doc.id;
+  return id == null ? '' : String(id);
 }
 
 export function sessionDurationSeconds(session) {

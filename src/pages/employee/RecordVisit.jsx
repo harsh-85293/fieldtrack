@@ -240,9 +240,12 @@ export default function RecordVisit() {
             {...register('storeId', { required: 'Please select a store' })}
           >
             <option value="">Select a store...</option>
-            {stores.map((store) => (
-              <option key={entityId(store)} value={entityId(store)}>{store.name}</option>
-            ))}
+            {stores.map((store) => {
+              const id = entityId(store);
+              return (
+                <option key={id} value={id}>{store.name}</option>
+              );
+            })}
           </Select>
         </div>
 
