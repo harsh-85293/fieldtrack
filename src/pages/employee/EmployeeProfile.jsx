@@ -68,6 +68,9 @@ export default function EmployeeProfile() {
     .toString()
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+  const isGoogleUser =
+    (profileData?.provider || user?.provider) === 'google'
+    || Boolean(profileData?.providerId || user?.providerId);
   const isActive = profileData?.isActive !== false && user?.isActive !== false;
 
   useEffect(() => {
@@ -168,14 +171,36 @@ export default function EmployeeProfile() {
           </div>
 
           <div className="p-4 border-t border-slate-100 mt-auto">
-            <button
-              type="button"
-              onClick={() => navigate('/app/change-password')}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium border border-primary-100 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors"
-            >
-              <Lock className="w-4 h-4" />
-              Change Password
-            </button>
+            {isGoogleUser ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-medium text-slate-800 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                  Signed in with Google
+                </p>
+                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                  You signed in with Google, so FieldTrack has no local password.
+                  Manage your password in your{' '}
+                  <a
+                    href="https://myaccount.google.com/security"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-700 font-medium hover:underline"
+                  >
+                    Google Account
+                  </a>
+                  .
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate('/app/change-password')}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium border border-primary-100 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 transition-colors"
+              >
+                <Lock className="w-4 h-4" />
+                Change Password
+              </button>
+            )}
           </div>
         </aside>
 

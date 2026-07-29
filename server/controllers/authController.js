@@ -150,6 +150,13 @@ export async function changePassword(req, res, next) {
     }
 
     const user = await User.findById(req.user._id).select('+password');
+    if (user.provider === 'google' || !user.password) {
+      throw new AppError(
+        'This account uses Google sign-in. Manage your password in your Google Account.',
+        400,
+      );
+    }
+
     const isMatch = await user.matchPassword(currentPassword);
     if (!isMatch) {
       throw new AppError('Current password is incorrect', 401);

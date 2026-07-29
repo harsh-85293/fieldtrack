@@ -7,7 +7,7 @@ export const authService = {
   completeGoogleProfile: (data) => client.post('/auth/google/complete-profile', data),
   logout: () => client.post('/auth/logout'),
   getMe: () => client.get('/auth/me'),
-  changePassword: (data) => client.post('/auth/change-password', data),
+  changePassword: (data) => client.put('/auth/change-password', data),
   resetPassword: (userId) => client.put(`/employees/${userId}/reset-password`),
 };
 
