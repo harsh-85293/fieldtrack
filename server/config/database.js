@@ -12,13 +12,8 @@ export async function connectDB() {
   }
 
   try {
-    // Local networks with HTTPS-inspecting antivirus often break Atlas TLS
-    // with "unable to verify the first certificate". Allow that in development only.
     const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 10000,
-      ...(process.env.NODE_ENV !== 'production'
-        ? { tlsAllowInvalidCertificates: true }
-        : {}),
+      serverSelectionTimeoutMS: 5000,
     });
     isConnected = true;
     logger.info(`MongoDB connected: ${conn.connection.host}/${conn.connection.name}`);

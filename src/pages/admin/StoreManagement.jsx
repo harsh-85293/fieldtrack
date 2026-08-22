@@ -7,8 +7,6 @@ import {
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 import { useForm } from 'react-hook-form';
-import { extractList, extractPagination } from '../../utils/apiData.js';
-import { entityId } from '../../utils/format.js';
 
 export default function StoreManagement() {
   const [stores, setStores] = useState([]);
@@ -34,8 +32,9 @@ export default function StoreManagement() {
     setError(null);
     try {
       const res = await storeService.getAll({ page, search });
-      setStores(extractList(res, 'stores'));
-      setTotalPages(extractPagination(res).pages);
+      const data = res.data.data || res.data;
+      setStores(data.stores || data.items || data || []);
+      setTotalPages(data.totalPages || data.pages || 1);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load stores');
     } finally {
@@ -51,8 +50,8 @@ export default function StoreManagement() {
   const openCreate = () => {
     setEditStore(null);
     reset({
-      name: '', code: '', address: '', city: '', state: '', postalCode: '',
-      latitude: '', longitude: '', phone: '', contactPerson: '',
+      name: '', address: '', city: '', state: '', postalCode: '',
+      latitude: '', longitude: '', radius: 100, phone: '', contactPerson: '',
     });
     setModalOpen(true);
   };
@@ -65,11 +64,11 @@ export default function StoreManagement() {
       city: store.city || '',
       state: store.state || '',
       postalCode: store.postalCode || '',
-      latitude: store.location?.lat ?? store.latitude ?? '',
-      longitude: store.location?.lng ?? store.longitude ?? '',
+      latitude: store.latitude || '',
+      longitude: store.longitude || '',
+      radius: store.radius || 100,
       phone: store.phone || '',
-      contactPerson: store.ownerName || store.contactPerson || '',
-      code: store.code || '',
+      contactPerson: store.contactPerson || '',
     });
     setModalOpen(true);
   };
@@ -77,19 +76,13 @@ export default function StoreManagement() {
   const onSubmit = async (data) => {
     try {
       const payload = {
-        name: data.name,
-        code: data.code || data.name?.slice(0, 6).toUpperCase().replace(/\s/g, '') || `STR${Date.now().toString().slice(-4)}`,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        postalCode: data.postalCode,
-        phone: data.phone,
-        ownerName: data.contactPerson,
-        latitude: data.latitude ? parseFloat(data.latitude) : undefined,
-        longitude: data.longitude ? parseFloat(data.longitude) : undefined,
+        ...data,
+        latitude: data.latitude ? parseFloat(data.latitude) : null,
+        longitude: data.longitude ? parseFloat(data.longitude) : null,
+        radius: parseInt(data.radius) || 100,
       };
       if (editStore) {
-        await storeService.update(entityId(editStore), payload);
+        await storeService.update(editStore.id, payload);
         toastSuccess('Store updated successfully');
       } else {
         await storeService.create(payload);
@@ -105,7 +98,7 @@ export default function StoreManagement() {
   const handleDelete = async () => {
     if (!confirmDelete) return;
     try {
-      await storeService.delete(entityId(confirmDelete));
+      await storeService.delete(confirmDelete.id);
       toastSuccess('Store deleted successfully');
       setConfirmDelete(null);
       loadStores();
@@ -157,23 +150,19 @@ export default function StoreManagement() {
                     <th className="px-6 py-3 text-left font-medium text-gray-600">Name</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-600">Address</th>
                     <th className="px-6 py-3 text-left font-medium text-gray-600">Phone</th>
-                    <th className="px-6 py-3 text-left font-medium text-gray-600">GPS</th>
+                    <th className="px-6 py-3 text-left font-medium text-gray-600">Radius</th>
                     <th className="px-6 py-3 text-right font-medium text-gray-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {stores.map((store) => (
-                    <tr key={entityId(store)} className="hover:bg-gray-50">
+                    <tr key={store.id} className="hover:bg-gray-50">
                       <td className="px-6 py-3 font-medium text-gray-900">{store.name}</td>
                       <td className="px-6 py-3 text-gray-600">
                         {[store.address, store.city, store.state].filter(Boolean).join(', ') || '—'}
                       </td>
                       <td className="px-6 py-3 text-gray-600">{store.phone || '—'}</td>
-                      <td className="px-6 py-3 text-gray-600">
-                        {store.location?.lat != null
-                          ? `${Number(store.location.lat).toFixed(4)}, ${Number(store.location.lng).toFixed(4)}`
-                          : '—'}
-                      </td>
+                      <td className="px-6 py-3 text-gray-600">{store.radius || 100} m</td>
                       <td className="px-6 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button onClick={() => openEdit(store)} className="p-1.5 text-gray-500 hover:text-primary-700 hover:bg-primary-50 rounded-lg">
@@ -194,16 +183,14 @@ export default function StoreManagement() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {stores.map((store) => (
-              <div key={entityId(store)} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div key={store.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-medium text-gray-900">{store.name}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {[store.address, store.city, store.state].filter(Boolean).join(', ') || '—'}
                     </p>
-                    <Badge color={store.location?.lat != null ? 'green' : 'gray'} className="mt-2">
-                      {store.location?.lat != null ? 'GPS set' : 'No GPS'}
-                    </Badge>
+                    <Badge color="blue" className="mt-2">{store.radius || 100} m radius</Badge>
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(store)} className="p-1.5 text-gray-500 hover:text-primary-700 rounded-lg">
@@ -232,7 +219,6 @@ export default function StoreManagement() {
             </h2>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <Input label="Store Name" error={errors.name?.message} {...register('name', { required: 'Name is required' })} />
-              <Input label="Store Code" error={errors.code?.message} {...register('code', { required: !editStore ? 'Code is required' : false })} />
               <Input label="Address" {...register('address')} />
               <div className="grid grid-cols-2 gap-4">
                 <Input label="City" {...register('city')} />
@@ -243,12 +229,13 @@ export default function StoreManagement() {
                 <Input label="Phone" {...register('phone')} />
               </div>
               <Input label="Contact Person" {...register('contactPerson')} />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <Input label="Latitude" type="number" step="any" {...register('latitude')} />
                 <Input label="Longitude" type="number" step="any" {...register('longitude')} />
+                <Input label="Radius (m)" type="number" {...register('radius')} />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
+                <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
                 <Button type="submit" loading={isSubmitting}>{editStore ? 'Update' : 'Create'}</Button>
               </div>
             </form>

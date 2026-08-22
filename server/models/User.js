@@ -127,7 +127,6 @@ userSchema.methods.toSafeJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.__v;
-  obj.id = obj._id?.toString?.() || obj._id;
   return obj;
 };
 

@@ -17,7 +17,11 @@ export async function checkIn(req, res, next) {
       throw new AppError('Latitude and longitude are required', 400);
     }
 
-    // Only one active session at a time (multiple completed sessions per day are allowed)
+    // Prevent duplicate active session for the same day
+    const now = new Date();
+    const dayStart = startOfDayUTC(now);
+    const dayEnd = endOfDayUTC(now);
+
     const existing = await WorkSession.findOne({
       employee: req.user._id,
       status: SESSION_STATUS.ACTIVE,
@@ -26,7 +30,14 @@ export async function checkIn(req, res, next) {
       throw new AppError('You already have an active session. Please check out first.', 409);
     }
 
-    const now = new Date();
+    // Also prevent two sessions on the same day
+    const sameDay = await WorkSession.findOne({
+      employee: req.user._id,
+      sessionDate: { $gte: dayStart, $lte: dayEnd },
+    });
+    if (sameDay) {
+      throw new AppError('A session already exists for today', 409);
+    }
 
     const session = await WorkSession.create({
       employee: req.user._id,
@@ -72,27 +83,13 @@ export async function checkOut(req, res, next) {
     // Calculate duration
     const totalDurationMs = now - session.checkInAt;
 
-    // Calculate distance from synced location points + check-in/out anchors
+    // Calculate distance from all synced location points
     const points = await LocationPoint.find({
       session: session._id,
       status: 'synced',
     }).sort('clientTimestamp');
 
-    const routePoints = [];
-    if (session.checkInLocation?.lat != null && session.checkInLocation?.lng != null) {
-      routePoints.push({
-        latitude: session.checkInLocation.lat,
-        longitude: session.checkInLocation.lng,
-      });
-    }
-    for (const p of points) {
-      routePoints.push({ latitude: p.latitude, longitude: p.longitude });
-    }
-    const checkOutLat = latitude != null ? latitude : session.checkOutLocation?.lat;
-    const checkOutLng = longitude != null ? longitude : session.checkOutLocation?.lng;
-    if (checkOutLat != null && checkOutLng != null) {
-      routePoints.push({ latitude: checkOutLat, longitude: checkOutLng });
-    }
+    const routePoints = points.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
     const totalDistanceKm = calculateRouteDistanceKm(routePoints);
 
     session.checkOutAt = now;
@@ -143,12 +140,9 @@ export async function getMyActiveSession(req, res, next) {
 export async function getMySessions(req, res, next) {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { startDate, endDate, date, status } = req.query;
+    const { startDate, endDate } = req.query;
     const filter = { employee: req.user._id };
-    if (status) filter.status = status;
-    if (date) {
-      filter.sessionDate = { $gte: startOfDayUTC(date), $lte: endOfDayUTC(date) };
-    } else if (startDate || endDate) {
+    if (startDate || endDate) {
       filter.sessionDate = {};
       if (startDate) filter.sessionDate.$gte = startOfDayUTC(startDate);
       if (endDate) filter.sessionDate.$lte = endOfDayUTC(endDate);
@@ -209,9 +203,9 @@ export async function getSessionRoute(req, res, next) {
 export async function listSessions(req, res, next) {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { employee, employeeId, status, startDate, endDate } = req.query;
+    const { employee, status, startDate, endDate } = req.query;
     const filter = {};
-    if (employee || employeeId) filter.employee = employee || employeeId;
+    if (employee) filter.employee = employee;
     if (status) filter.status = status;
     if (startDate || endDate) {
       filter.sessionDate = {};

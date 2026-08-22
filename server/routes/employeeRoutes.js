@@ -12,7 +12,6 @@ import {
   getMyAttendance,
   getEmployeeAttendance,
   getEmployeeVisits,
-  getEmployeeSummary,
 } from '../controllers/employeeController.js';
 import {
   listPendingEmployees,
@@ -49,7 +48,6 @@ router.patch('/:id/reactivate', adminOnly, reactivateEmployee);
 // Admin routes
 router.get('/', adminOnly, listEmployees);
 router.get('/:id', adminOnly, getEmployee);
-router.get('/:id/summary', adminOnly, getEmployeeSummary);
 router.post(
   '/',
   adminOnly,

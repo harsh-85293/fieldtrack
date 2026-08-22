@@ -5,16 +5,7 @@ import { sessionService } from '../../api/services.js';
 import {
   LoadingCard, EmptyState, ErrorState, Badge, Pagination,
 } from '../../components/ui/index.jsx';
-import {
-  formatDateTime,
-  formatDuration,
-  formatDistance,
-  entityId,
-  sessionCheckIn,
-  sessionDurationSeconds,
-  sessionDistanceMeters,
-} from '../../utils/format.js';
-import { extractList, extractPagination } from '../../utils/apiData.js';
+import { formatDateTime, formatDuration, formatDistance } from '../../utils/format.js';
 
 export default function AttendanceHistory() {
   const [sessions, setSessions] = useState([]);
@@ -28,11 +19,11 @@ export default function AttendanceHistory() {
     setLoading(true);
     setError(null);
     try {
-      const params = { page };
-      if (dateFilter) params.date = dateFilter;
+      const params = { page, date: dateFilter };
       const res = await sessionService.getMySessions(params);
-      setSessions(extractList(res, 'sessions'));
-      setTotalPages(extractPagination(res).pages);
+      const data = res.data.data || res.data;
+      setSessions(data.sessions || data.items || data || []);
+      setTotalPages(data.totalPages || data.pages || 1);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load sessions');
     } finally {
@@ -46,7 +37,7 @@ export default function AttendanceHistory() {
   }, [loadSessions]);
 
   return (
-    <div className="space-y-4">
+    <div className="p-4 space-y-4">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Attendance History</h1>
         <p className="text-sm text-gray-500">Your past attendance sessions</p>
@@ -80,30 +71,26 @@ export default function AttendanceHistory() {
       ) : (
         <>
           <div className="space-y-3">
-            {sessions.map((s) => {
-              const id = entityId(s);
-              if (!id) return null;
-              return (
-                <Link
-                  key={id}
-                  to={`/app/attendance/${id}`}
-                  className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatDateTime(sessionCheckIn(s))}
-                      </p>
-                      <div className="mt-1 flex gap-3 text-xs text-gray-500">
-                        <span>Duration: {formatDuration(sessionDurationSeconds(s))}</span>
-                        <span>Distance: {formatDistance(sessionDistanceMeters(s))}</span>
-                      </div>
+            {sessions.map((s) => (
+              <Link
+                key={s.id}
+                to={`/app/attendance/${s.id}`}
+                className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300 transition-colors"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {formatDateTime(s.checkInTime)}
+                    </p>
+                    <div className="mt-1 flex gap-3 text-xs text-gray-500">
+                      <span>Duration: {formatDuration(s.duration)}</span>
+                      <span>Distance: {formatDistance(s.totalDistance)}</span>
                     </div>
-                    <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
                   </div>
-                </Link>
-              );
-            })}
+                  <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
+                </div>
+              </Link>
+            ))}
           </div>
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </>
