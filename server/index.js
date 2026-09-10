@@ -65,7 +65,7 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 // ---- Health check ----
-app.get('/health', (req, res) => {
+app.get(['/health', '/healthz'], (req, res) => {
   res.json({
     success: true,
     message: 'FieldTrack API is running',
