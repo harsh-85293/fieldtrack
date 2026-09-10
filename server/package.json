@@ -8,7 +8,7 @@
     "start": "node --env-file=../.env index.js",
     "dev": "nodemon --exec 'node --env-file=../.env' index.js",
     "seed": "node seeds/seed.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --testPathPattern=tests/"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --testPathPattern=tests/"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
