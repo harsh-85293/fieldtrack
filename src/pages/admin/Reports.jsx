@@ -6,6 +6,7 @@ import {
 } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 import { formatMoney, formatDate } from '../../utils/format.js';
+import { extractList } from '../../utils/apiData.js';
 
 const TABS = [
   { key: 'employee', label: 'By Employee', endpoint: 'getByEmployee' },
@@ -18,31 +19,68 @@ const COLUMNS = {
   employee: [
     { key: 'employeeName', label: 'Employee', sortable: true },
     { key: 'employeeId', label: 'Emp ID' },
-    { key: 'visitCount', label: 'Visits', sortable: true },
-    { key: 'sessionCount', label: 'Sessions' },
-    { key: 'totalDistance', label: 'Distance (km)', sortable: true, format: (v) => ((v || 0) / 1000).toFixed(2) },
-    { key: 'totalAmount', label: 'Revenue', sortable: true, format: (v) => formatMoney(v || 0) },
+    { key: 'totalVisits', label: 'Visits', sortable: true },
+    { key: 'totalSessions', label: 'Sessions', sortable: true },
+    {
+      key: 'totalDistanceKm',
+      label: 'Distance (km)',
+      sortable: true,
+      format: (v) => Number(v || 0).toFixed(2),
+    },
+    {
+      key: 'totalVisitValue',
+      label: 'Revenue',
+      sortable: true,
+      format: (v) => formatMoney(v || 0),
+    },
   ],
   store: [
     { key: 'storeName', label: 'Store', sortable: true },
     { key: 'city', label: 'City' },
-    { key: 'visitCount', label: 'Visits', sortable: true },
-    { key: 'totalItems', label: 'Items' },
-    { key: 'totalAmount', label: 'Revenue', sortable: true, format: (v) => formatMoney(v || 0) },
+    { key: 'totalVisits', label: 'Visits', sortable: true },
+    { key: 'totalQuantity', label: 'Items' },
+    {
+      key: 'totalValue',
+      label: 'Revenue',
+      sortable: true,
+      format: (v) => formatMoney(v || 0),
+    },
+    {
+      key: 'totalCollected',
+      label: 'Collected',
+      sortable: true,
+      format: (v) => formatMoney(v || 0),
+    },
   ],
   product: [
     { key: 'productName', label: 'Product', sortable: true },
     { key: 'sku', label: 'SKU' },
-    { key: 'totalQty', label: 'Qty Sold', sortable: true },
+    { key: 'totalQuantity', label: 'Qty Sold', sortable: true },
     { key: 'visitCount', label: 'Visits' },
-    { key: 'totalAmount', label: 'Revenue', sortable: true, format: (v) => formatMoney(v || 0) },
+    {
+      key: 'totalRevenue',
+      label: 'Revenue',
+      sortable: true,
+      format: (v) => formatMoney(v || 0),
+    },
   ],
   date: [
     { key: 'date', label: 'Date', sortable: true, format: (v) => formatDate(v) },
-    { key: 'visitCount', label: 'Visits', sortable: true },
-    { key: 'sessionCount', label: 'Sessions' },
-    { key: 'employeeCount', label: 'Active Employees' },
-    { key: 'totalAmount', label: 'Revenue', sortable: true, format: (v) => formatMoney(v || 0) },
+    { key: 'totalVisits', label: 'Visits', sortable: true },
+    { key: 'totalSessions', label: 'Sessions', sortable: true },
+    { key: 'totalQuantity', label: 'Items' },
+    {
+      key: 'totalDistanceKm',
+      label: 'Distance (km)',
+      sortable: true,
+      format: (v) => Number(v || 0).toFixed(2),
+    },
+    {
+      key: 'totalValue',
+      label: 'Revenue',
+      sortable: true,
+      format: (v) => formatMoney(v || 0),
+    },
   ],
 };
 
@@ -64,12 +102,43 @@ export default function Reports() {
     setError(null);
     try {
       const tab = TABS.find((t) => t.key === activeTab);
-      const params = { page, search, startDate: dateRange.start, endDate: dateRange.end };
+      const params = {};
+      if (dateRange.start) params.startDate = dateRange.start;
+      if (dateRange.end) params.endDate = dateRange.end;
       const res = await reportService[tab.endpoint](params);
-      const result = res.data.data || res.data;
-      setData(result.rows || result.items || result || []);
-      setSummary(result.summary || result.total || null);
-      setTotalPages(result.totalPages || result.pages || 1);
+      let rows = extractList(res, 'rows').map((row) => {
+        if (activeTab === 'product') {
+          return { ...row, productName: row.productName || row._id };
+        }
+        if (activeTab === 'date') {
+          return { ...row, date: row.date || row._id };
+        }
+        return row;
+      });
+
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        rows = rows.filter((row) =>
+          Object.values(row).some((v) => String(v ?? '').toLowerCase().includes(q)),
+        );
+      }
+
+      setData(rows);
+
+      const moneyKey = activeTab === 'employee'
+        ? 'totalVisitValue'
+        : activeTab === 'product'
+          ? 'totalRevenue'
+          : 'totalValue';
+      const summaryData = {
+        rows: rows.length,
+        totalVisits: rows.reduce((s, r) => s + (Number(r.totalVisits) || 0), 0),
+        totalQuantity: rows.reduce((s, r) => s + (Number(r.totalQuantity) || 0), 0),
+        totalDistanceKm: rows.reduce((s, r) => s + (Number(r.totalDistanceKm) || 0), 0),
+        totalValue: rows.reduce((s, r) => s + (Number(r[moneyKey]) || 0), 0),
+      };
+      setSummary(summaryData);
+      setTotalPages(1);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load report');
     } finally {
@@ -109,11 +178,11 @@ export default function Reports() {
   const handleExport = async (format) => {
     try {
       const tab = TABS.find((t) => t.key === activeTab);
-      const params = { type: tab.key, startDate: dateRange.start, endDate: dateRange.end };
+      const params = { startDate: dateRange.start, endDate: dateRange.end };
       let res;
-      if (format === 'pdf') res = await reportService.exportPDF(params);
-      else if (format === 'excel') res = await reportService.exportExcel(params);
-      else res = await reportService.exportCSV(params);
+      if (format === 'pdf') res = await reportService.exportPDF(tab.key, params);
+      else if (format === 'excel') res = await reportService.exportExcel(tab.key, params);
+      else res = await reportService.exportCSV(tab.key, params);
 
       const blob = new Blob([res.data], {
         type: res.headers['content-type'] || 'application/octet-stream',
@@ -189,6 +258,27 @@ export default function Reports() {
           </Button>
         </div>
       </div>
+
+      {summary && !loading && !error && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Rows</p>
+            <p className="text-xl font-bold text-gray-900">{summary.rows}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Visits</p>
+            <p className="text-xl font-bold text-gray-900">{summary.totalVisits}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Distance (km)</p>
+            <p className="text-xl font-bold text-gray-900">{Number(summary.totalDistanceKm || 0).toFixed(2)}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs text-gray-500">Revenue</p>
+            <p className="text-xl font-bold text-gray-900">{formatMoney(summary.totalValue || 0)}</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       {summary && (

@@ -7,7 +7,8 @@ import {
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 import { useForm } from 'react-hook-form';
-import { fromMinor, toMinor, formatMoney } from '../../utils/format.js';
+import { formatRupees, entityId } from '../../utils/format.js';
+import { extractList, extractPagination } from '../../utils/apiData.js';
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([]);
@@ -25,20 +26,16 @@ export default function ProductManagement() {
     register,
     handleSubmit,
     reset,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm();
-
-  const priceDisplay = watch('priceDisplay');
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await productService.getAll({ page, search });
-      const data = res.data.data || res.data;
-      setProducts(data.products || data.items || data || []);
-      setTotalPages(data.totalPages || data.pages || 1);
+      setProducts(extractList(res, 'products'));
+      setTotalPages(extractPagination(res).pages);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load products');
     } finally {
@@ -53,7 +50,7 @@ export default function ProductManagement() {
 
   const openCreate = () => {
     setEditProduct(null);
-    reset({ name: '', sku: '', description: '', priceDisplay: '', unit: 'piece', category: '', isActive: true });
+    reset({ name: '', sku: '', description: '', priceDisplay: '', unit: 'pc', category: '', isActive: true });
     setModalOpen(true);
   };
 
@@ -63,8 +60,9 @@ export default function ProductManagement() {
       name: product.name || '',
       sku: product.sku || '',
       description: product.description || '',
-      priceDisplay: fromMinor(product.price || 0).toFixed(2),
-      unit: product.unit || 'piece',
+      // API getter already returns rupees
+      priceDisplay: Number(product.defaultPrice ?? product.price ?? 0).toFixed(2),
+      unit: product.unit || 'pc',
       category: product.category || '',
       isActive: product.isActive ?? true,
     });
@@ -77,13 +75,13 @@ export default function ProductManagement() {
         name: data.name,
         sku: data.sku,
         description: data.description,
-        price: toMinor(parseFloat(data.priceDisplay) || 0),
+        // Backend setter expects rupees
+        defaultPrice: parseFloat(data.priceDisplay) || 0,
         unit: data.unit,
-        category: data.category,
-        isActive: data.isActive,
+        isActive: data.isActive === true || data.isActive === 'true',
       };
       if (editProduct) {
-        await productService.update(editProduct.id, payload);
+        await productService.update(entityId(editProduct), payload);
         toastSuccess('Product updated successfully');
       } else {
         await productService.create(payload);
@@ -99,7 +97,7 @@ export default function ProductManagement() {
   const handleDelete = async () => {
     if (!confirmDelete) return;
     try {
-      await productService.delete(confirmDelete.id);
+      await productService.delete(entityId(confirmDelete));
       toastSuccess('Product deleted successfully');
       setConfirmDelete(null);
       loadProducts();
@@ -158,12 +156,12 @@ export default function ProductManagement() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {products.map((product) => (
-                    <tr key={product.id} className="hover:bg-gray-50">
+                    <tr key={entityId(product)} className="hover:bg-gray-50">
                       <td className="px-6 py-3 font-medium text-gray-900">{product.name}</td>
                       <td className="px-6 py-3 text-gray-600">{product.sku || '—'}</td>
                       <td className="px-6 py-3 text-gray-600">{product.category || '—'}</td>
                       <td className="px-6 py-3 text-gray-600">{product.unit || '—'}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatMoney(product.price || 0)}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatRupees(product.defaultPrice ?? product.price ?? 0)}</td>
                       <td className="px-6 py-3">
                         <Badge color={product.isActive ? 'green' : 'gray'}>
                           {product.isActive ? 'Active' : 'Inactive'}
@@ -188,12 +186,12 @@ export default function ProductManagement() {
 
           <div className="md:hidden space-y-3">
             {products.map((product) => (
-              <div key={product.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div key={entityId(product)} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-medium text-gray-900">{product.name}</p>
                     <p className="text-xs text-gray-500">{product.sku || '—'}</p>
-                    <p className="text-sm font-semibold text-primary-700 mt-1">{formatMoney(product.price || 0)}</p>
+                    <p className="text-sm font-semibold text-primary-700 mt-1">{formatRupees(product.defaultPrice ?? product.price ?? 0)}</p>
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(product)} className="p-1.5 text-gray-500 hover:text-primary-700 rounded-lg">

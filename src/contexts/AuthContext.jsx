@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     loadUser,
+    setUser,
     isAuthenticated: !!user,
   };
 

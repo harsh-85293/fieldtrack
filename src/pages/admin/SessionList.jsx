@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Clock, Search } from 'lucide-react';
 import { sessionService, employeeService } from '../../api/services.js';
 import {
   LoadingCard, EmptyState, ErrorState, Badge, Pagination,
 } from '../../components/ui/index.jsx';
-import { formatDateTime, formatDuration, formatDistance } from '../../utils/format.js';
+import { formatDateTime, formatDuration, formatDistance, entityId, sessionCheckIn, sessionCheckOut, sessionDurationSeconds, sessionDistanceMeters } from '../../utils/format.js';
+import { extractList, extractPagination } from '../../utils/apiData.js';
 
 export default function SessionList() {
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +22,7 @@ export default function SessionList() {
   const loadEmployees = useCallback(async () => {
     try {
       const res = await employeeService.getAll({ limit: 1000 });
-      const data = res.data.data || res.data;
-      setEmployees(data.employees || data.items || data || []);
+      setEmployees(extractList(res, 'employees'));
     } catch { /* ignore */ }
   }, []);
 
@@ -31,9 +32,8 @@ export default function SessionList() {
     try {
       const params = { page, search, ...filters };
       const res = await sessionService.getAll(params);
-      const data = res.data.data || res.data;
-      setSessions(data.sessions || data.items || data || []);
-      setTotalPages(data.totalPages || data.pages || 1);
+      setSessions(extractList(res, 'sessions'));
+      setTotalPages(extractPagination(res).pages);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load sessions');
     } finally {
@@ -128,44 +128,53 @@ export default function SessionList() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sessions.map((s) => (
-                    <tr key={s.id} className="hover:bg-gray-50">
+                  {sessions.map((s) => {
+                    const id = entityId(s);
+                    const employee = s.employee || {};
+                    return (
+                    <tr key={id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/admin/sessions/${id}`)}>
                       <td className="px-6 py-3">
-                        <Link to={`/admin/employees/${s.employeeId}`} className="font-medium text-primary-700 hover:underline">
-                          {s.employeeName || '—'}
-                        </Link>
+                        <span className="font-medium text-primary-700">
+                          {employee.fullName || s.employeeName || '—'}
+                        </span>
                       </td>
-                      <td className="px-6 py-3 text-gray-600">{formatDateTime(s.checkInTime)}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatDateTime(s.checkOutTime)}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatDuration(s.duration)}</td>
-                      <td className="px-6 py-3 text-gray-600">{formatDistance(s.totalDistance)}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatDateTime(sessionCheckIn(s))}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatDateTime(sessionCheckOut(s))}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatDuration(sessionDurationSeconds(s))}</td>
+                      <td className="px-6 py-3 text-gray-600">{formatDistance(sessionDistanceMeters(s))}</td>
                       <td className="px-6 py-3">
                         <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
           <div className="md:hidden space-y-3">
-            {sessions.map((s) => (
-              <Link key={s.id} to={`/admin/sessions/${s.id}`} className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300">
+            {sessions.map((s) => {
+              const id = entityId(s);
+              if (!id) return null;
+              const employee = s.employee || {};
+              return (
+              <Link key={id} to={`/admin/sessions/${id}`} className="block bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-primary-300">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="font-medium text-gray-900">{s.employeeName || '—'}</p>
-                    <p className="text-xs text-gray-500 mt-1">In: {formatDateTime(s.checkInTime)}</p>
-                    <p className="text-xs text-gray-500">Out: {formatDateTime(s.checkOutTime)}</p>
+                    <p className="font-medium text-gray-900">{employee.fullName || s.employeeName || '—'}</p>
+                    <p className="text-xs text-gray-500 mt-1">In: {formatDateTime(sessionCheckIn(s))}</p>
+                    <p className="text-xs text-gray-500">Out: {formatDateTime(sessionCheckOut(s))}</p>
                   </div>
                   <Badge color={s.status === 'active' ? 'green' : 'gray'}>{s.status}</Badge>
                 </div>
                 <div className="mt-2 flex gap-4 text-xs text-gray-500">
-                  <span>Duration: {formatDuration(s.duration)}</span>
-                  <span>Distance: {formatDistance(s.totalDistance)}</span>
+                  <span>Duration: {formatDuration(sessionDurationSeconds(s))}</span>
+                  <span>Distance: {formatDistance(sessionDistanceMeters(s))}</span>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
 
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />

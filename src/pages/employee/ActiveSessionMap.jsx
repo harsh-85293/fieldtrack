@@ -5,7 +5,9 @@ import 'leaflet/dist/leaflet.css';
 import { ArrowLeft, MapPin, Navigation } from 'lucide-react';
 import { sessionService } from '../../api/services.js';
 import { LoadingSpinner, ErrorState, Badge } from '../../components/ui/index.jsx';
+import ExactLocation from '../../components/maps/ExactLocation.jsx';
 import { formatTime, formatDuration, formatDistance } from '../../utils/format.js';
+import { extractList } from '../../utils/apiData.js';
 
 export default function ActiveSessionMap() {
   const navigate = useNavigate();
@@ -24,8 +26,7 @@ export default function ActiveSessionMap() {
     (async () => {
       try {
         const sessRes = await sessionService.getMySessions({ status: 'active' });
-        const sessData = sessRes.data.data || sessRes.data;
-        const sessions = sessData.sessions || sessData.items || sessData || [];
+        const sessions = extractList(sessRes, 'sessions');
         const active = sessions[0] || null;
         if (!active) {
           setError('No active session found');
@@ -34,7 +35,7 @@ export default function ActiveSessionMap() {
         }
         setSession(active);
         const locRes = await sessionService.getLocationPoints(active.id);
-        setLocations(locRes.data.data || locRes.data || []);
+        setLocations(extractList(locRes));
       } catch (err) {
         setError(err.response?.data?.message || 'Failed to load session');
       } finally {
@@ -111,7 +112,9 @@ export default function ActiveSessionMap() {
         }
         currentMarkerRef.current = L.marker([point.latitude, point.longitude], {
           icon: L.divIcon({ className: 'marker-current', iconSize: [20, 20], iconAnchor: [10, 10] }),
-        }).addTo(mapInstance.current);
+        }).addTo(mapInstance.current).bindPopup(
+          `<div style="min-width:140px"><strong>You are here</strong><div style="font-family:ui-monospace,monospace;font-size:12px;margin-top:4px">${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</div>${point.accuracy != null ? `<div style="color:#6b7280;font-size:12px">±${Math.round(point.accuracy)} m</div>` : ''}</div>`
+        );
 
         // Extend polyline
         if (polylineRef.current) {
@@ -173,6 +176,12 @@ export default function ActiveSessionMap() {
           <span className="text-gray-600">{formatDuration(session?.duration || 0)}</span>
         </div>
       </div>
+
+      {currentPos && (
+        <div className="px-4 py-3 bg-white border-b border-gray-200">
+          <ExactLocation point={currentPos} label="Current position" compact />
+        </div>
+      )}
 
       {/* Map */}
       <div ref={mapRef} className="flex-1" style={{ minHeight: '400px' }} />

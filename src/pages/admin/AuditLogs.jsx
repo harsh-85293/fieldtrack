@@ -4,7 +4,18 @@ import { auditService } from '../../api/services.js';
 import {
   LoadingCard, EmptyState, ErrorState, Badge, Pagination,
 } from '../../components/ui/index.jsx';
-import { formatDateTime } from '../../utils/format.js';
+import { formatDateTime, entityId } from '../../utils/format.js';
+import { extractList, extractPagination } from '../../utils/apiData.js';
+
+function actionBadgeColor(action) {
+  const a = String(action || '').toLowerCase();
+  if (/(create|approve|signup|reactivate)/.test(a)) return 'green';
+  if (/(update|correct|change|toggle)/.test(a)) return 'blue';
+  if (/(delete|reject|suspend)/.test(a)) return 'red';
+  if (/login/.test(a)) return 'amber';
+  if (/logout/.test(a)) return 'gray';
+  return 'gray';
+}
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
@@ -19,11 +30,12 @@ export default function AuditLogs() {
     setLoading(true);
     setError(null);
     try {
-      const params = { page, search, action: actionFilter };
+      const params = { page };
+      if (search) params.search = search;
+      if (actionFilter) params.action = actionFilter;
       const res = await auditService.getAll(params);
-      const data = res.data.data || res.data;
-      setLogs(data.logs || data.items || data || []);
-      setTotalPages(data.totalPages || data.pages || 1);
+      setLogs(extractList(res, 'logs'));
+      setTotalPages(extractPagination(res).pages);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load audit logs');
     } finally {
@@ -35,14 +47,6 @@ export default function AuditLogs() {
     const timer = setTimeout(() => loadLogs(), 300);
     return () => clearTimeout(timer);
   }, [loadLogs]);
-
-  const actionColors = {
-    CREATE: 'green',
-    UPDATE: 'blue',
-    DELETE: 'red',
-    LOGIN: 'amber',
-    LOGOUT: 'gray',
-  };
 
   return (
     <div className="space-y-6">
@@ -68,11 +72,12 @@ export default function AuditLogs() {
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
         >
           <option value="">All Actions</option>
-          <option value="CREATE">Create</option>
-          <option value="UPDATE">Update</option>
-          <option value="DELETE">Delete</option>
-          <option value="LOGIN">Login</option>
-          <option value="LOGOUT">Logout</option>
+          <option value="create">Create</option>
+          <option value="update">Update</option>
+          <option value="delete">Delete</option>
+          <option value="login">Login</option>
+          <option value="approve">Approve</option>
+          <option value="suspend">Suspend</option>
         </select>
       </div>
 
@@ -101,11 +106,11 @@ export default function AuditLogs() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50">
+                    <tr key={entityId(log)} className="hover:bg-gray-50">
                       <td className="px-6 py-3 text-gray-600">{formatDateTime(log.timestamp || log.createdAt)}</td>
-                      <td className="px-6 py-3 text-gray-700">{log.userName || log.user || '—'}</td>
+                      <td className="px-6 py-3 text-gray-700">{log.userName || log.actor?.fullName || log.actor?.email || '—'}</td>
                       <td className="px-6 py-3">
-                        <Badge color={actionColors[log.action] || 'gray'}>{log.action}</Badge>
+                        <Badge color={actionBadgeColor(log.action)}>{log.action}</Badge>
                       </td>
                       <td className="px-6 py-3 text-gray-600">{log.entity || log.entityType || '—'}</td>
                       <td className="px-6 py-3 text-gray-600">{log.description || '—'}</td>
@@ -119,12 +124,12 @@ export default function AuditLogs() {
 
           <div className="md:hidden space-y-3">
             {logs.map((log) => (
-              <div key={log.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div key={entityId(log)} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-start justify-between mb-2">
-                  <Badge color={actionColors[log.action] || 'gray'}>{log.action}</Badge>
+                  <Badge color={actionBadgeColor(log.action)}>{log.action}</Badge>
                   <span className="text-xs text-gray-500">{formatDateTime(log.timestamp || log.createdAt)}</span>
                 </div>
-                <p className="text-sm font-medium text-gray-900">{log.userName || log.user || '—'}</p>
+                <p className="text-sm font-medium text-gray-900">{log.userName || log.actor?.fullName || log.actor?.email || '—'}</p>
                 <p className="text-xs text-gray-500 mt-1">{log.description || '—'}</p>
                 <div className="flex justify-between mt-2 text-xs text-gray-400">
                   <span>{log.entity || log.entityType || '—'}</span>

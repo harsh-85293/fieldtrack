@@ -3,12 +3,12 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { ArrowLeft, Save } from 'lucide-react';
 import { employeeService } from '../../api/services.js';
-import { Button, Input, Select, LoadingSpinner, ErrorState } from '../../components/ui/index.jsx';
+import { Button, Input, LoadingSpinner, ErrorState } from '../../components/ui/index.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
 
 export default function EmployeeEdit() {
   const { id } = useParams();
-  const isEdit = !!id;
+  const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
   const { toastSuccess, toastError } = useToast();
   const [loading, setLoading] = useState(isEdit);
@@ -21,7 +21,7 @@ export default function EmployeeEdit() {
     reset,
   } = useForm({
     defaultValues: {
-      name: '',
+      fullName: '',
       email: '',
       employeeId: '',
       phone: '',
@@ -30,29 +30,31 @@ export default function EmployeeEdit() {
       state: '',
       postalCode: '',
       password: '',
-      role: 'employee',
-      isActive: true,
     },
   });
 
   useEffect(() => {
     if (!isEdit) return;
+    if (!id || id === 'undefined') {
+      setPageError('Invalid employee');
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const res = await employeeService.getById(id);
         const emp = res.data.data || res.data;
+        const profile = emp.profile || {};
         reset({
-          name: emp.name || '',
+          fullName: emp.fullName || emp.name || '',
           email: emp.email || '',
           employeeId: emp.employeeId || '',
           phone: emp.phone || '',
-          address: emp.address || '',
-          city: emp.city || '',
-          state: emp.state || '',
-          postalCode: emp.postalCode || '',
+          address: profile.address || emp.address || '',
+          city: profile.city || emp.city || '',
+          state: profile.state || emp.state || '',
+          postalCode: profile.postalCode || emp.postalCode || '',
           password: '',
-          role: emp.role || 'employee',
-          isActive: emp.isActive ?? true,
         });
       } catch (err) {
         setPageError(err.response?.data?.message || 'Failed to load employee');
@@ -64,12 +66,26 @@ export default function EmployeeEdit() {
 
   const onSubmit = async (data) => {
     try {
-      const payload = { ...data };
-      if (!payload.password) delete payload.password;
+      const payload = {
+        fullName: data.fullName,
+        email: data.email,
+        employeeId: data.employeeId,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        postalCode: data.postalCode,
+      };
+
       if (isEdit) {
         await employeeService.update(id, payload);
+        if (data.password) {
+          const { default: client } = await import('../../api/client.js');
+          await client.put(`/employees/${id}/reset-password`, { newPassword: data.password });
+        }
         toastSuccess('Employee updated successfully');
       } else {
+        payload.password = data.password;
         await employeeService.create(payload);
         toastSuccess('Employee created successfully');
       }
@@ -102,8 +118,8 @@ export default function EmployeeEdit() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
             label="Full Name"
-            error={errors.name?.message}
-            {...register('name', { required: 'Name is required' })}
+            error={errors.fullName?.message}
+            {...register('fullName', { required: 'Name is required' })}
           />
           <Input
             label="Email"
@@ -144,20 +160,15 @@ export default function EmployeeEdit() {
             error={errors.postalCode?.message}
             {...register('postalCode')}
           />
-          <Select label="Role" error={errors.role?.message} {...register('role')}>
-            <option value="employee">Employee</option>
-            <option value="admin">Admin</option>
-          </Select>
-          <Select label="Status" {...register('isActive')}>
-            <option value={true}>Active</option>
-            <option value={false}>Inactive</option>
-          </Select>
           {!isEdit && (
             <Input
               label="Password"
               type="password"
               error={errors.password?.message}
-              {...register('password', isEdit ? {} : { required: 'Password is required', minLength: { value: 6, message: 'Min 6 characters' } })}
+              {...register('password', {
+                required: 'Password is required',
+                minLength: { value: 6, message: 'Min 6 characters' },
+              })}
             />
           )}
           {isEdit && (

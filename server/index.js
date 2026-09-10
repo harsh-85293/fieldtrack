@@ -117,7 +117,7 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/health', (req, res) => {
+app.get(['/health', '/healthz'], (req, res) => {
   res.json({
     success: true,
     message: 'FieldTrack API is running',
