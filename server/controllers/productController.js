@@ -65,7 +65,7 @@ export async function getProduct(req, res, next) {
  */
 export async function createProduct(req, res, next) {
   try {
-    const { name, sku, description, unit, defaultPrice, isActive } = req.body;
+    const { name, sku, description, unit, defaultPrice, price, isActive } = req.body;
 
     if (!name || !sku) {
       throw new AppError('name and sku are required', 400);
@@ -76,7 +76,7 @@ export async function createProduct(req, res, next) {
       sku,
       description,
       unit: unit || 'pc',
-      defaultPrice: defaultPrice ?? 0,
+      defaultPrice: defaultPrice ?? price ?? 0,
       isActive: isActive ?? true,
       createdBy: req.user._id,
     });
@@ -100,7 +100,7 @@ export async function createProduct(req, res, next) {
  */
 export async function updateProduct(req, res, next) {
   try {
-    const { name, sku, description, unit, defaultPrice, isActive } = req.body;
+    const { name, sku, description, unit, defaultPrice, price, isActive } = req.body;
 
     const product = await Product.findById(req.params.id);
     if (!product) throw new AppError('Product not found', 404);
@@ -111,6 +111,7 @@ export async function updateProduct(req, res, next) {
     if (description !== undefined) product.description = description;
     if (unit !== undefined) product.unit = unit;
     if (defaultPrice !== undefined) product.defaultPrice = defaultPrice;
+    else if (price !== undefined) product.defaultPrice = price;
     if (isActive !== undefined) product.isActive = isActive;
     await product.save();
 

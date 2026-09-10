@@ -1,4 +1,5 @@
 import 'express-async-errors';
+import 'dotenv/config';
 
 import express from 'express';
 import helmet from 'helmet';
@@ -26,14 +27,46 @@ import auditRoutes from './routes/auditRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+
+function getAllowedOrigins() {
+  const fromEnv = (process.env.CLIENT_URL || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return new Set([
+    ...fromEnv,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ]);
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (getAllowedOrigins().has(origin)) return true;
+  // Vercel production + preview deployments
+  try {
+    const host = new URL(origin).hostname;
+    if (host.endsWith('.vercel.app')) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
 
 // ---- Security & middleware ----
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Required so Google Identity Services can communicate with the opener window
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+}));
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   }),
 );
@@ -51,10 +84,14 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('combined'));
 }
 
-// Rate limiter
+// Rate limiter (much looser in development — React Strict Mode + dashboards fire many requests)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+  max: parseInt(
+    process.env.RATE_LIMIT_MAX ||
+      (process.env.NODE_ENV === 'production' ? '100' : '5000'),
+    10,
+  ),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -64,8 +101,23 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// ---- Health check ----
-app.get(['/health', '/healthz'], (req, res) => {
+// ---- Root & health ----
+app.get('/', (req, res) => {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  // Browsers hitting the API root should land on the app
+  if (req.accepts('html')) {
+    return res.redirect(302, clientUrl);
+  }
+  res.json({
+    success: true,
+    message: 'FieldTrack API is running',
+    app: clientUrl,
+    health: '/health',
+    api: '/api/v1',
+  });
+});
+
+app.get('/health', (req, res) => {
   res.json({
     success: true,
     message: 'FieldTrack API is running',
@@ -98,7 +150,7 @@ app.use(errorHandler);
 async function start() {
   await connectDB();
 
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
   });
 

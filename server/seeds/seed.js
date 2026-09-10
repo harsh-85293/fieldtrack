@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import mongoose from 'mongoose';
 import connectDB from '../config/database.js';
 import logger from '../utils/logger.js';
@@ -15,11 +16,19 @@ import AppSetting from '../models/AppSetting.js';
 import { ROLES, SESSION_STATUS, SYNC_STATUS } from '../config/constants.js';
 import { haversineKm, distanceMeters, toMinorUnits, startOfDayUTC, endOfDayUTC } from '../utils/geo.js';
 
+function randomPassword(bytes = 9) {
+  return crypto.randomBytes(bytes).toString('base64url');
+}
+
 /**
  * Seed the database with demo data.
+ * Passwords: set SEED_ADMIN_PASSWORD / SEED_EMPLOYEE_PASSWORD, or random ones are generated and printed once.
  */
 async function seed() {
   await connectDB();
+
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || randomPassword();
+  const employeePassword = process.env.SEED_EMPLOYEE_PASSWORD || randomPassword();
 
   logger.info('Clearing existing data...');
   await Promise.all([
@@ -37,7 +46,7 @@ async function seed() {
   const admin = await User.create({
     role: ROLES.ADMIN,
     email: 'admin@fieldtrack.com',
-    password: 'Admin@12345',
+    password: adminPassword,
     fullName: 'System Administrator',
     phone: '+919999999999',
     isActive: true,
@@ -57,7 +66,7 @@ async function seed() {
     const user = await User.create({
       role: ROLES.EMPLOYEE,
       email: emp.email,
-      password: 'Employee@123',
+      password: employeePassword,
       fullName: emp.fullName,
       employeeId: emp.employeeId,
       phone: emp.phone,
@@ -280,20 +289,19 @@ async function seed() {
   }
   logger.info(`Created ${defaultSettings.length} app settings`);
 
-  // ---- Print demo credentials ----
+  // ---- Print one-time local credentials (not for docs / git) ----
   console.log('\n');
   console.log('========================================');
   console.log('   FieldTrack - Database Seeded!');
   console.log('========================================');
-  console.log('\n--- Demo Credentials ---\n');
-  console.log('ADMIN:');
-  console.log('  Email:     admin@fieldtrack.com');
-  console.log('  Password:  Admin@12345');
-  console.log('\nEMPLOYEES:');
-  console.log('  1. Email: rahul@fieldtrack.com   | Password: Employee@123 | ID: EMP001');
-  console.log('  2. Email: priya@fieldtrack.com   | Password: Employee@123 | ID: EMP002');
-  console.log('  3. Email: amit@fieldtrack.com    | Password: Employee@123 | ID: EMP003');
-  console.log('\n--- Seed Data Summary ---\n');
+  console.log('\nSave these passwords now (shown once):\n');
+  console.log(`ADMIN:     admin@fieldtrack.com  /  ${adminPassword}`);
+  console.log(`EMPLOYEES: (same password for all three)`);
+  console.log(`  rahul@fieldtrack.com  EMP001  /  ${employeePassword}`);
+  console.log(`  priya@fieldtrack.com  EMP002  /  ${employeePassword}`);
+  console.log(`  amit@fieldtrack.com   EMP003  /  ${employeePassword}`);
+  console.log('\nDo not commit these. Change before any shared/production use.\n');
+  console.log('--- Seed Data Summary ---');
   console.log(`  Users:         ${1 + employees.length} (1 admin, ${employees.length} employees)`);
   console.log(`  Stores:        ${stores.length}`);
   console.log(`  Products:      ${products.length}`);

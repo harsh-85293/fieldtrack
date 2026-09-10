@@ -2,8 +2,9 @@ import WorkSession from '../models/WorkSession.js';
 import StoreVisit from '../models/StoreVisit.js';
 import Store from '../models/Store.js';
 import Product from '../models/Product.js';
+import User from '../models/User.js';
 import { AppError } from '../utils/helpers.js';
-import { distanceMeters, getPagination, paginateResult, startOfDayUTC, endOfDayUTC, toMinorUnits } from '../utils/geo.js';
+import { distanceMeters, getPagination, paginateResult, startOfDayUTC, endOfDayUTC } from '../utils/geo.js';
 import { STORE_VISIT_RADIUS_METERS, SESSION_STATUS, SYNC_STATUS } from '../config/constants.js';
 import logAudit from '../middleware/auditMiddleware.js';
 
@@ -77,7 +78,7 @@ export async function createVisit(req, res, next) {
     // Build line items with price snapshots from Product collection
     const builtItems = [];
     let totalQuantity = 0;
-    let totalValueMinor = 0;
+    let totalValueRupees = 0;
 
     if (Array.isArray(items) && items.length > 0) {
       // Fetch products for price snapshots
@@ -88,24 +89,25 @@ export async function createVisit(req, res, next) {
       for (const item of items) {
         let productName = item.productName || '';
         let sku = item.sku || '';
-        let unitPrice = item.unitPrice || 0;
+        // unitPrice from client is in rupees (major units)
+        let unitPrice = Number(item.unitPrice) || 0;
 
         if (item.productId) {
-          const product = productMap.get(item.productId);
+          const product = productMap.get(String(item.productId));
           if (product) {
             productName = product.name;
             sku = product.sku;
-            // Use product default price if no explicit price given
-            if (!item.unitPrice) {
+            // Product getter returns rupees
+            if (item.unitPrice == null || item.unitPrice === '') {
               unitPrice = product.defaultPrice || 0;
             }
           }
         }
 
         const qty = Number(item.quantity) || 0;
-        const unitPriceMinor = toMinorUnits(unitPrice);
-        const lineTotal = unitPriceMinor * qty;
-        const collected = toMinorUnits(item.collectedAmount || 0);
+        const collectedAmount = item.collectedAmount != null
+          ? Number(item.collectedAmount)
+          : unitPrice * qty;
 
         builtItems.push({
           product: item.productId || undefined,
@@ -113,12 +115,12 @@ export async function createVisit(req, res, next) {
           sku,
           quantity: qty,
           unitPrice,
-          collectedAmount: item.collectedAmount || 0,
+          collectedAmount,
           notes: item.notes || undefined,
         });
 
         totalQuantity += qty;
-        totalValueMinor += lineTotal;
+        totalValueRupees += unitPrice * qty;
       }
     }
 
@@ -133,7 +135,8 @@ export async function createVisit(req, res, next) {
       notes: notes || undefined,
       items: builtItems,
       totalQuantity,
-      totalValue: totalValueMinor, // setter converts to minor units (already in minor, but setter handles it)
+      // Schema setter converts rupees → paise once
+      totalValue: totalValueRupees,
       idempotencyKey,
       syncStatus: SYNC_STATUS.SYNCED,
     });
@@ -163,9 +166,11 @@ export async function createVisit(req, res, next) {
 export async function getMyVisits(req, res, next) {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, date } = req.query;
     const filter = { employee: req.user._id };
-    if (startDate || endDate) {
+    if (date) {
+      filter.visitDate = { $gte: startOfDayUTC(date), $lte: endOfDayUTC(date) };
+    } else if (startDate || endDate) {
       filter.visitDate = {};
       if (startDate) filter.visitDate.$gte = startOfDayUTC(startDate);
       if (endDate) filter.visitDate.$lte = endOfDayUTC(endDate);
@@ -185,11 +190,16 @@ export async function getMyVisits(req, res, next) {
  */
 export async function getVisit(req, res, next) {
   try {
-    const visit = await StoreVisit.findById(req.params.id).populate('store', 'name code city address location');
+    const visit = await StoreVisit.findById(req.params.id)
+      .populate('store', 'name code city address location')
+      .populate('employee', 'fullName email employeeId');
     if (!visit) throw new AppError('Visit not found', 404);
 
-    if (req.user.role === 'employee' && visit.employee.toString() !== req.user._id.toString()) {
-      throw new AppError('Not authorized to view this visit', 403);
+    if (req.user.role === 'employee') {
+      const ownerId = visit.employee?._id || visit.employee;
+      if (String(ownerId) !== String(req.user._id)) {
+        throw new AppError('Not authorized to view this visit', 403);
+      }
     }
 
     res.json({ success: true, data: visit });
@@ -205,14 +215,39 @@ export async function getVisit(req, res, next) {
 export async function listVisits(req, res, next) {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { employee, store, startDate, endDate } = req.query;
+    const { employee, store, employeeId, storeId, startDate, endDate, outsideRadius, search } = req.query;
     const filter = {};
-    if (employee) filter.employee = employee;
-    if (store) filter.store = store;
+    if (employee || employeeId) filter.employee = employee || employeeId;
+    if (store || storeId) filter.store = store || storeId;
+    if (outsideRadius === 'true') filter.isOutsideRadius = true;
+    else if (outsideRadius === 'false') filter.isOutsideRadius = false;
     if (startDate || endDate) {
       filter.visitDate = {};
       if (startDate) filter.visitDate.$gte = startOfDayUTC(startDate);
       if (endDate) filter.visitDate.$lte = endOfDayUTC(endDate);
+    }
+    if (search) {
+      const [matchingEmployees, matchingStores] = await Promise.all([
+        User.find({
+          $or: [
+            { fullName: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } },
+            { employeeId: { $regex: search, $options: 'i' } },
+          ],
+        }).select('_id'),
+        Store.find({
+          $or: [
+            { name: { $regex: search, $options: 'i' } },
+            { code: { $regex: search, $options: 'i' } },
+            { city: { $regex: search, $options: 'i' } },
+          ],
+        }).select('_id'),
+      ]);
+      filter.$or = [
+        { notes: { $regex: search, $options: 'i' } },
+        { employee: { $in: matchingEmployees.map((u) => u._id) } },
+        { store: { $in: matchingStores.map((s) => s._id) } },
+      ];
     }
     const [total, visits] = await Promise.all([
       StoreVisit.countDocuments(filter),

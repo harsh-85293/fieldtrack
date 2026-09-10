@@ -12,7 +12,7 @@ export async function listAuditLogs(req, res, next) {
 
     const filter = {};
     if (entity) filter.entity = entity;
-    if (action) filter.action = action;
+    if (action) filter.action = { $regex: action, $options: 'i' };
     if (actor) filter.actor = actor;
     if (search) {
       filter.$or = [

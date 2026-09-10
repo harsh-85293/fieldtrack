@@ -15,11 +15,18 @@ import logAudit from '../middleware/auditMiddleware.js';
 export async function listEmployees(req, res, next) {
   try {
     const { page, limit, skip } = getPagination(req.query);
-    const { search, role, isActive } = req.query;
+    const { search, role, isActive, status } = req.query;
 
-    const filter = {};
-    if (role) filter.role = role;
-    if (isActive !== undefined) filter.isActive = isActive === 'true';
+    const filter = { role: role || ROLES.EMPLOYEE };
+    if (isActive !== undefined) filter.isActive = isActive === 'true' || isActive === true;
+    else if (status === 'active') filter.isActive = true;
+    else if (status === 'inactive') filter.isActive = false;
+    // Exclude pending OAuth signups from the main list (shown in pending approvals)
+    if (!status || status === 'active' || status === 'inactive') {
+      filter.status = { $nin: ['pending', 'rejected'] };
+    } else if (status) {
+      filter.status = status;
+    }
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
@@ -319,6 +326,60 @@ export async function getMyAttendance(req, res, next) {
     }
     const sessions = await WorkSession.find(filter).sort('-sessionDate');
     res.json({ success: true, data: sessions });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/employees/:id/summary
+ * Admin: aggregate stats for one employee.
+ */
+export async function getEmployeeSummary(req, res, next) {
+  try {
+    const employeeId = req.params.id;
+    const user = await User.findById(employeeId);
+    if (!user) throw new AppError('Employee not found', 404);
+
+    const [sessionAgg, visitAgg] = await Promise.all([
+      WorkSession.aggregate([
+        { $match: { employee: user._id } },
+        {
+          $group: {
+            _id: null,
+            totalSessions: { $sum: 1 },
+            totalDistanceKm: { $sum: { $ifNull: ['$totalDistanceKm', 0] } },
+            totalDurationMs: { $sum: { $ifNull: ['$totalDurationMs', 0] } },
+          },
+        },
+      ]),
+      StoreVisit.aggregate([
+        { $match: { employee: user._id } },
+        {
+          $group: {
+            _id: null,
+            totalVisits: { $sum: 1 },
+            totalRevenue: { $sum: { $ifNull: ['$totalValue', 0] } },
+          },
+        },
+      ]),
+    ]);
+
+    const sessions = sessionAgg[0] || {};
+    const visits = visitAgg[0] || {};
+
+    res.json({
+      success: true,
+      data: {
+        totalSessions: sessions.totalSessions || 0,
+        totalVisits: visits.totalVisits || 0,
+        totalDistance: Math.round((sessions.totalDistanceKm || 0) * 1000),
+        totalDistanceKm: sessions.totalDistanceKm || 0,
+        totalDurationMs: sessions.totalDurationMs || 0,
+        // Aggregation returns raw minor units (paise)
+        totalRevenue: visits.totalRevenue || 0,
+      },
+    });
   } catch (err) {
     next(err);
   }
